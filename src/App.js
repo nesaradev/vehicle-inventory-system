@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -24,20 +24,45 @@ import Invoices from './pages/Invoices';
 import Invoice from './pages/Invoice';
 import StockReceive from './pages/StockReceive';
 import StockReceives from './pages/StockReceives';
+import ClearDatabase from './pages/ClearDatabase';
 
 function AppContent() {
   const navigate = useNavigate();
   const { isAuthenticated, loading, login } = useAuth();
 
   useEffect(() => {
+    console.log('🚀 AppContent useEffect - React app is mounting');
+    console.log('🔍 electronAPI available:', !!window.electronAPI);
+    console.log('🔍 electronAPI methods:', window.electronAPI ? Object.keys(window.electronAPI) : 'undefined');
+    console.log('🔍 Current location:', window.location.href);
+    console.log('🔍 Current hash:', window.location.hash);
+    console.log('🔍 Auth state - isAuthenticated:', isAuthenticated, 'loading:', loading);
+    
+    // Only navigate to dashboard if no route is currently active (on app start)
+    const currentHash = window.location.hash;
+    if (!currentHash || currentHash === '#/' || currentHash === '') {
+      setTimeout(() => {
+        console.log('🔄 No active route, navigating to dashboard...');
+        navigate('/dashboard', { replace: true });
+        console.log('📍 Navigated to /dashboard');
+      }, 100);
+    } else {
+      console.log('📍 Route already active:', currentHash);
+    }
+    
     if (window.electronAPI) {
+      console.log('✅ Setting up Electron navigation listeners');
       window.electronAPI.onNavigateToLowStock(() => {
+        console.log('📍 Electron navigation: low-stock');
         navigate('/low-stock');
       });
 
       window.electronAPI.onNavigate((path) => {
+        console.log('📍 Electron navigation:', path);
         navigate(path);
       });
+    } else {
+      console.warn('⚠️ electronAPI not available - running in web mode');
     }
   }, [navigate]);
 
@@ -68,7 +93,8 @@ function AppContent() {
             <SyncStatus />
           </div>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/add-part" element={<AddPart />} />
             <Route path="/add-stock" element={<AddStock />} />
@@ -84,6 +110,7 @@ function AppContent() {
             <Route path="/add-invoice" element={<Invoice />} />
             <Route path="/stock-receives" element={<StockReceives />} />
             <Route path="/stock-receive" element={<StockReceive />} />
+            <Route path="/clear-database" element={<ClearDatabase />} />
           </Routes>
         </div>
       </div>
@@ -92,6 +119,8 @@ function AppContent() {
 }
 
 function App() {
+  console.log('🎯 App component rendering - Main App function called');
+  
   return (
     <ErrorBoundary>
       <AuthProvider>

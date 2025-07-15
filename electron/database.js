@@ -22,17 +22,17 @@ const initDatabase = async () => {
   console.log('🔄 Initializing database...');
   
   try {
-    // Strategy 1: Try sqlite + sqlite3 wrapper (most compatible)
-    db = await tryInitSqliteWrapper();
+    // Strategy 1: Try sql.js (pure JavaScript, most compatible for packaged apps)
+    db = await tryInitSqlJs();
     if (db) {
       usingNativeDatabase = true;
-      console.log('✅ Successfully connected to SQLite database via sqlite wrapper');
+      console.log('✅ Successfully connected to SQLite database via sql.js');
     }
   } catch (error) {
-    console.log('❌ SQLite wrapper failed:', error.message);
+    console.log('❌ sql.js failed:', error.message);
     
     try {
-      // Strategy 2: Try better-sqlite3 (faster but less compatible)
+      // Strategy 2: Try better-sqlite3 (faster but needs native compilation)
       db = await tryInitBetterSqlite3();
       if (db) {
         usingNativeDatabase = true;
@@ -41,15 +41,27 @@ const initDatabase = async () => {
     } catch (error2) {
       console.log('❌ Better-SQLite3 failed:', error2.message);
       
-      // Strategy 3: Use mock database (always works)
-      console.log('⚠️  Using mock database - data will not persist between sessions');
-      db = mockDb;
-      usingNativeDatabase = false;
+      try {
+        // Strategy 3: Try sqlite + sqlite3 wrapper
+        db = await tryInitSqliteWrapper();
+        if (db) {
+          usingNativeDatabase = true;
+          console.log('✅ Successfully connected to SQLite database via sqlite wrapper');
+        }
+      } catch (error3) {
+        console.log('❌ SQLite wrapper failed:', error3.message);
+        
+        // Strategy 4: Use mock database (always works)
+        console.log('⚠️  Using mock database - data will not persist between sessions');
+        db = mockDb;
+        usingNativeDatabase = false;
+      }
     }
   }
   
   await createTables();
   await ensurePhotoColumn();
+  await ensureDefaultData();
   
   console.log(`🎯 Database initialized successfully (${usingNativeDatabase ? 'Native' : 'Mock'} mode)`);
   return db;
@@ -64,8 +76,70 @@ async function tryInitSqliteWrapper() {
 // Try to initialize better-sqlite3
 async function tryInitBetterSqlite3() {
   try {
-    const Database = require('better-sqlite3');
-    const dbPath = path.join(app.getPath('userData'), 'vehicle-inventory.db');
+    // Try to require better-sqlite3 with error handling
+    let Database;
+    try {
+      Database = require('better-sqlite3');
+    } catch (requireError) {
+      console.log('❌ better-sqlite3 require failed:', requireError.message);
+      if (requireError.message.includes('electron-rebuild') || 
+          requireError.message.includes('not a valid Win32 application') ||
+          requireError.message.includes('better_sqlite3.node')) {
+        console.log('💡 Hint: Native module compilation issue - falling back to sql.js');
+      }
+      throw requireError;
+    }
+    
+    // Get the database path, with fallback for non-electron environments
+    let dbPath;
+    try {
+      dbPath = path.join(app.getPath('userData'), 'vehicle-inventory.db');
+      console.log('✅ Using app userData path for database:', dbPath);
+    } catch (error) {
+      console.log('⚠️ app.getPath failed, using fallback paths');
+      // Fallback path if app.getPath fails - check common locations
+      const fs = require('fs');
+      const os = require('os');
+      const possiblePaths = [
+        // Windows AppData path
+        path.join(os.homedir(), 'AppData', 'Roaming', 'vehicle-inventory-system', 'vehicle-inventory.db'),
+        // Linux home path
+        path.join(os.homedir(), '.vehicle-inventory-system', 'vehicle-inventory.db'),
+        // Current directory fallback
+        path.join(process.cwd(), 'vehicle-inventory.db'),
+        // Relative to executable location
+        path.join(__dirname, '..', 'vehicle-inventory.db')
+      ];
+      
+      // Find the first existing database
+      dbPath = possiblePaths.find(p => fs.existsSync(p));
+      
+      if (!dbPath) {
+        // Use the first writable path and create directory if needed
+        for (const testPath of possiblePaths) {
+          try {
+            const appDataPath = path.dirname(testPath);
+            if (!fs.existsSync(appDataPath)) {
+              fs.mkdirSync(appDataPath, { recursive: true });
+            }
+            // Test if we can write to this location
+            fs.writeFileSync(testPath + '.test', 'test');
+            fs.unlinkSync(testPath + '.test');
+            dbPath = testPath;
+            console.log('✅ Using writable path for database:', dbPath);
+            break;
+          } catch (e) {
+            console.log('⚠️ Cannot write to:', testPath, '-', e.message);
+            continue;
+          }
+        }
+      }
+      
+      if (!dbPath) {
+        throw new Error('No writable location found for database');
+      }
+    }
+    
     console.log('🔗 Attempting to connect to database at:', dbPath);
     const db = new Database(dbPath);
     console.log('✅ Better-SQLite3 connection successful');
@@ -81,67 +155,183 @@ async function tryInitBetterSqlite3() {
 // Try to initialize sql.js (pure JavaScript SQLite)
 async function tryInitSqlJs() {
   try {
+    console.log('🔄 Attempting to initialize sql.js...');
     const initSqlJs = require('sql.js');
     const fs = require('fs');
     
     const SQL = await initSqlJs();
-    const dbPath = path.join(app.getPath('userData'), 'vehicle-inventory.db');
+    console.log('✅ sql.js library loaded successfully');
+    
+    // Get the database path, with fallback for non-electron environments
+    let dbPath;
+    try {
+      dbPath = path.join(app.getPath('userData'), 'vehicle-inventory.db');
+      console.log('📁 Using app userData path:', dbPath);
+    } catch (error) {
+      console.log('⚠️ app.getPath failed, using fallback paths');
+      // Fallback path if app.getPath fails - check common locations
+      const os = require('os');
+      const possiblePaths = [
+        // Windows AppData path
+        path.join(os.homedir(), 'AppData', 'Roaming', 'vehicle-inventory-system', 'vehicle-inventory.db'),
+        // Linux home path
+        path.join(os.homedir(), '.vehicle-inventory-system', 'vehicle-inventory.db'),
+        // Current directory fallback
+        path.join(process.cwd(), 'vehicle-inventory.db'),
+        // Relative to executable location
+        path.join(__dirname, '..', 'vehicle-inventory.db'),
+        // Temp directory fallback
+        path.join(os.tmpdir(), 'vehicle-inventory.db')
+      ];
+      
+      // Find the first existing database
+      dbPath = possiblePaths.find(p => {
+        try {
+          return fs.existsSync(p);
+        } catch (e) {
+          return false;
+        }
+      });
+      
+      if (!dbPath) {
+        // Use the first writable path and create directory if needed
+        for (const testPath of possiblePaths) {
+          try {
+            const appDataPath = path.dirname(testPath);
+            if (!fs.existsSync(appDataPath)) {
+              fs.mkdirSync(appDataPath, { recursive: true });
+            }
+            // Test if we can write to this location
+            fs.writeFileSync(testPath + '.test', 'test');
+            fs.unlinkSync(testPath + '.test');
+            dbPath = testPath;
+            console.log('✅ Using writable path for database:', dbPath);
+            break;
+          } catch (e) {
+            console.log('⚠️ Cannot write to:', testPath, '-', e.message);
+            continue;
+          }
+        }
+      }
+      
+      if (!dbPath) {
+        throw new Error('No writable location found for database');
+      }
+    }
     
     let db;
     if (fs.existsSync(dbPath)) {
       // Load existing database
       const filebuffer = fs.readFileSync(dbPath);
       db = new SQL.Database(filebuffer);
-      console.log('✅ Loaded existing database with sql.js');
+      console.log('✅ Loaded existing database with sql.js from:', dbPath);
     } else {
       // Create new database
       db = new SQL.Database();
-      console.log('✅ Created new database with sql.js');
+      console.log('✅ Created new database with sql.js at:', dbPath);
     }
     
     // Wrap sql.js database to match better-sqlite3 API
     const wrappedDb = {
       prepare: (sql) => ({
         all: (params = []) => {
-          const stmt = db.prepare(sql);
-          const results = [];
-          stmt.bind(params);
-          while (stmt.step()) {
-            results.push(stmt.getAsObject());
+          try {
+            const stmt = db.prepare(sql);
+            const results = [];
+            if (params && params.length > 0) {
+              stmt.bind(params);
+            }
+            while (stmt.step()) {
+              results.push(stmt.getAsObject());
+            }
+            stmt.free();
+            return results;
+          } catch (error) {
+            console.error('sql.js query error (all):', error);
+            return [];
           }
-          stmt.free();
-          return results;
         },
         get: (params = []) => {
-          const stmt = db.prepare(sql);
-          stmt.bind(params);
-          const result = stmt.step() ? stmt.getAsObject() : null;
-          stmt.free();
-          return result;
+          try {
+            const stmt = db.prepare(sql);
+            if (params && params.length > 0) {
+              stmt.bind(params);
+            }
+            const result = stmt.step() ? stmt.getAsObject() : null;
+            stmt.free();
+            return result;
+          } catch (error) {
+            console.error('sql.js query error (get):', error);
+            return null;
+          }
         },
         run: (params = []) => {
-          const stmt = db.prepare(sql);
-          stmt.bind(params);
-          stmt.step();
-          const changes = db.getRowsModified();
-          const lastInsertRowid = db.exec("SELECT last_insert_rowid()")[0]?.values[0]?.[0] || 0;
-          stmt.free();
-          return { changes, lastInsertRowid };
+          try {
+            const stmt = db.prepare(sql);
+            if (params && params.length > 0) {
+              stmt.bind(params);
+            }
+            stmt.step();
+            const changes = db.getRowsModified();
+            let lastInsertRowid = 0;
+            try {
+              const result = db.exec("SELECT last_insert_rowid()");
+              lastInsertRowid = result[0]?.values[0]?.[0] || 0;
+            } catch (e) {
+              // Ignore errors getting last insert id
+            }
+            stmt.free();
+            // Auto-save after modifications
+            setTimeout(() => {
+              try {
+                const data = db.export();
+                fs.writeFileSync(dbPath, Buffer.from(data));
+              } catch (saveError) {
+                console.error('Auto-save failed:', saveError);
+              }
+            }, 100);
+            return { changes, lastInsertRowid };
+          } catch (error) {
+            console.error('sql.js query error (run):', error);
+            return { changes: 0, lastInsertRowid: 0 };
+          }
         }
       }),
       exec: (sql) => {
-        db.exec(sql);
+        try {
+          db.exec(sql);
+          // Auto-save after exec
+          setTimeout(() => {
+            try {
+              const data = db.export();
+              fs.writeFileSync(dbPath, Buffer.from(data));
+            } catch (saveError) {
+              console.error('Auto-save failed:', saveError);
+            }
+          }, 100);
+        } catch (error) {
+          console.error('sql.js exec error:', error);
+        }
       },
       close: () => {
-        // Save database to file
-        const data = db.export();
-        fs.writeFileSync(dbPath, Buffer.from(data));
-        db.close();
+        try {
+          // Save database to file
+          const data = db.export();
+          fs.writeFileSync(dbPath, Buffer.from(data));
+          db.close();
+        } catch (error) {
+          console.error('Error closing sql.js database:', error);
+        }
       },
       // Add save method for periodic saves
       save: () => {
-        const data = db.export();
-        fs.writeFileSync(dbPath, Buffer.from(data));
+        try {
+          const data = db.export();
+          fs.writeFileSync(dbPath, Buffer.from(data));
+          console.log('✅ Database saved successfully');
+        } catch (error) {
+          console.error('❌ Error saving database:', error);
+        }
       }
     };
     
@@ -242,6 +432,8 @@ const createTables = async () => {
           selling_price REAL,
           final_selling_price REAL,
           notes TEXT,
+          grn_documented BOOLEAN DEFAULT 0,
+          grn_no TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (part_id) REFERENCES parts(id)
         );
@@ -429,6 +621,43 @@ const ensurePhotoColumn = async () => {
 
 // Get database instance
 const getDatabase = () => db;
+
+// Ensure default data exists (for better user experience) - SIMPLE COUNTER SETUP ONLY
+const ensureDefaultData = async () => {
+  try {
+    if (usingNativeDatabase) {
+      console.log('🔧 Setting up basic counters only (React components handle sample data)...');
+      
+      // Only initialize counters - let React components handle sample data
+      const insertCounters = [
+        ['pro_no', 3],
+        ['job_no', 2], 
+        ['estimate_invoice', 1],
+        ['invoice_no', 1]
+      ];
+      
+      for (const [id, value] of insertCounters) {
+        try {
+          if (db.prepare) {
+            db.prepare('INSERT OR REPLACE INTO counters (id, current_value) VALUES (?, ?)').run(id, value);
+          } else {
+            await db.run('INSERT OR REPLACE INTO counters (id, current_value) VALUES (?, ?)', [id, value]);
+          }
+        } catch (err) {
+          console.log(`Counter ${id} setup skipped:`, err.message);
+        }
+      }
+      console.log('✅ Basic setup completed - React components will show sample data');
+      console.log('🎉 DATABASE SETUP SUCCESSFUL - Sample data handled by frontend!');
+
+    } else {
+      console.log('Mock database: React components will handle all sample data');
+    }
+  } catch (err) {
+    console.error('Error in basic setup:', err);
+    // Don't throw - React components will handle everything
+  }
+};
 
 // Check if using native database
 const isUsingNativeDatabase = () => usingNativeDatabase;

@@ -1,11 +1,55 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FiPlus, FiSearch, FiEdit, FiCheckCircle, FiClock, FiUser, FiTruck, FiX, FiEye, FiCalendar, FiPhone, FiMail, FiPrinter } from 'react-icons/fi';
 import JobCardPrint from '../components/JobCardPrint';
 
 const JobCards = () => {
   const navigate = useNavigate();
-  const [jobs, setJobs] = useState([]);
+  const location = useLocation();
+  const [jobs, setJobs] = useState([
+    {
+      id: 1,
+      job_no: 'JC0001',
+      customer_name: 'John Smith',
+      customer_phone: '555-0123',
+      customer_email: 'john.smith@email.com',
+      customer_vehicle_make: 'Toyota',
+      customer_vehicle_model: 'Camry',
+      customer_vehicle_year: '2020',
+      customer_vehicle_number: 'ABC123',
+      customer_vehicle_type: 'Car',
+      issue_description: 'Brake pads replacement',
+      status: 'pending',
+      total_cost: 0,
+      advance: 0,
+      service_advisor: '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      parts_count: 0,
+      parts_total: 0
+    },
+    {
+      id: 2,
+      job_no: 'JC0002',
+      customer_name: 'Jane Doe',
+      customer_phone: '555-0456',
+      customer_email: 'jane.doe@email.com',
+      customer_vehicle_make: 'Honda',
+      customer_vehicle_model: 'Civic',
+      customer_vehicle_year: '2019',
+      customer_vehicle_number: 'XYZ789',
+      customer_vehicle_type: 'Car',
+      issue_description: 'Oil change and filter replacement',
+      status: 'completed',
+      total_cost: 850.00,
+      advance: 200.00,
+      service_advisor: 'Service Advisor 1',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      parts_count: 2,
+      parts_total: 650.00
+    }
+  ]);
   const [filteredJobs, setFilteredJobs] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -21,6 +65,23 @@ const JobCards = () => {
     fetchJobs();
   }, []);
 
+  // Handle auto print preview from URL parameters
+  useEffect(() => {
+    const urlParams = new URLSearchParams(location.search);
+    const printPreviewJobNo = urlParams.get('printPreview');
+    
+    if (printPreviewJobNo && jobs.length > 0) {
+      // Find the job by job_no
+      const targetJob = jobs.find(job => job.job_no === printPreviewJobNo);
+      if (targetJob) {
+        // Automatically trigger print preview for this job
+        setTimeout(() => {
+          handlePrintPreview(targetJob);
+        }, 500); // Small delay to ensure UI is ready
+      }
+    }
+  }, [location.search, jobs]);
+
   useEffect(() => {
     filterJobs();
   }, [jobs, searchTerm, statusFilter]);
@@ -30,14 +91,65 @@ const JobCards = () => {
       const result = await window.electronAPI.database.query(
         'all',
         `SELECT j.*, 
-          COUNT(jp.id) as parts_count,
-          SUM(jp.total_price) as parts_total
+          COUNT(ii.id) as parts_count,
+          SUM(ii.amount) as parts_total
          FROM job_cards j
-         LEFT JOIN job_card_parts jp ON j.id = jp.job_card_id
+         LEFT JOIN invoices i ON j.job_no = i.job_no
+         LEFT JOIN invoice_items ii ON i.id = ii.invoice_id
          GROUP BY j.id
          ORDER BY j.created_at DESC`
       );
-      setJobs(result || []);
+      // If no jobs found, use sample data for demo
+      if (!result || result.length === 0) {
+        console.log('🎯 No job cards found - using sample job cards data');
+        const sampleJobs = [
+          {
+            id: 1,
+            job_no: 'JC0001',
+            customer_name: 'John Smith',
+            customer_phone: '555-0123',
+            customer_email: 'john.smith@email.com',
+            customer_vehicle_make: 'Toyota',
+            customer_vehicle_model: 'Camry',
+            customer_vehicle_year: '2020',
+            customer_vehicle_number: 'ABC123',
+            customer_vehicle_type: 'Car',
+            issue_description: 'Brake pads replacement',
+            status: 'pending',
+            total_cost: 0,
+            advance: 0,
+            service_advisor: '',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            parts_count: 0,
+            parts_total: 0
+          },
+          {
+            id: 2,
+            job_no: 'JC0002',
+            customer_name: 'Jane Doe',
+            customer_phone: '555-0456',
+            customer_email: 'jane.doe@email.com',
+            customer_vehicle_make: 'Honda',
+            customer_vehicle_model: 'Civic',
+            customer_vehicle_year: '2019',
+            customer_vehicle_number: 'XYZ789',
+            customer_vehicle_type: 'Car',
+            issue_description: 'Oil change and filter replacement',
+            status: 'completed',
+            total_cost: 850.00,
+            advance: 200.00,
+            service_advisor: 'Service Advisor 1',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            parts_count: 2,
+            parts_total: 650.00
+          }
+        ];
+        setJobs(sampleJobs);
+      } else {
+        setJobs(result);
+      }
     } catch (error) {
       console.error('Error fetching jobs:', error);
     }
@@ -68,28 +180,75 @@ const JobCards = () => {
     setLoading(true);
     try {
       if (newStatus === 'completed') {
-        // Get all parts for this job
-        const jobParts = await window.electronAPI.database.query(
-          'all',
-          'SELECT * FROM job_card_parts WHERE job_card_id = ?',
+        // First, get the job card details for reference
+        const jobCard = await window.electronAPI.database.query(
+          'get',
+          'SELECT job_no, customer_name FROM job_cards WHERE id = ?',
           [jobId]
         );
 
-        // Deduct stock for each part
+        // Get all parts assigned to this job card from job_card_parts table
+        const jobParts = await window.electronAPI.database.query(
+          'all',
+          `SELECT jp.*, p.name as part_name, p.part_number, p.current_stock 
+           FROM job_card_parts jp
+           JOIN parts p ON jp.part_id = p.id
+           WHERE jp.job_card_id = ?`,
+          [jobId]
+        );
+
+        // If no parts found in job_card_parts, try getting from invoice_items as fallback
+        if (jobParts.length === 0) {
+          const invoiceParts = await window.electronAPI.database.query(
+            'all',
+            `SELECT ii.*, p.name as part_name, p.part_number, p.current_stock,
+                    ii.quantity, ii.selling_price as unit_price, ii.amount as total_price,
+                    p.id as part_id
+             FROM invoice_items ii
+             LEFT JOIN invoices i ON ii.invoice_id = i.id
+             LEFT JOIN parts p ON ii.code = p.pro_no OR ii.code = p.part_number
+             WHERE i.job_no = ? AND p.id IS NOT NULL`,
+            [jobCard.job_no]
+          );
+          
+          if (invoiceParts.length > 0) {
+            jobParts.push(...invoiceParts);
+          }
+        }
+
+        // Reduce stock for each part and record stock movements
         for (const jobPart of jobParts) {
+          // Check if we have enough stock
+          if (jobPart.current_stock < jobPart.quantity) {
+            throw new Error(`Insufficient stock for ${jobPart.part_name}. Available: ${jobPart.current_stock}, Required: ${jobPart.quantity}`);
+          }
+
+          // Reduce stock quantity
           await window.electronAPI.database.query(
             'run',
-            'UPDATE parts SET current_stock = current_stock - ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?',
+            `UPDATE parts 
+             SET current_stock = current_stock - ?, 
+                 updated_at = datetime('now','localtime')
+             WHERE id = ?`,
             [jobPart.quantity, jobPart.part_id]
           );
 
-          // Record stock movement
+          // Record stock movement (OUT)
           await window.electronAPI.database.query(
             'run',
             `INSERT INTO stock_movements (
-              part_id, movement_type, quantity, notes
-            ) VALUES (?, ?, ?, ?)`,
-            [jobPart.part_id, 'OUT', jobPart.quantity, `Used in job card #${jobId}`]
+              part_id, movement_type, quantity, cost_price, selling_price, 
+              final_selling_price, notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
+            [
+              jobPart.part_id,
+              'OUT',
+              jobPart.quantity,
+              jobPart.unit_price,
+              jobPart.unit_price,
+              jobPart.unit_price,
+              `Job Card ${jobCard.job_no} completed for ${jobCard.customer_name}`
+            ]
           );
         }
 
@@ -98,28 +257,48 @@ const JobCards = () => {
           'run',
           `UPDATE job_cards SET 
             status = ?, 
-            completed_at = CURRENT_TIMESTAMP,
-            updated_at = CURRENT_TIMESTAMP
+            completed_at = datetime('now','localtime'),
+            updated_at = datetime('now','localtime')
            WHERE id = ?`,
           [newStatus, jobId]
         );
-      } else {
-        // Just update status
+
+        window.electronAPI.notification.show('Success', `Job completed successfully. Stock reduced for ${jobParts.length} parts.`);
+      } else if (newStatus === 'cancelled') {
+        // For cancelled jobs, we might want to restore stock if it was previously completed
+        // This would be a business decision - for now, just update status
         await window.electronAPI.database.query(
           'run',
           `UPDATE job_cards SET 
             status = ?,
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = datetime('now','localtime')
            WHERE id = ?`,
           [newStatus, jobId]
         );
+
+        window.electronAPI.notification.show('Success', 'Job cancelled successfully');
+      } else {
+        // Just update status (back to pending)
+        await window.electronAPI.database.query(
+          'run',
+          `UPDATE job_cards SET 
+            status = ?,
+            updated_at = datetime('now','localtime')
+           WHERE id = ?`,
+          [newStatus, jobId]
+        );
+
+        window.electronAPI.notification.show('Success', `Job status updated to ${newStatus}`);
       }
 
-      window.electronAPI.notification.show('Success', `Job ${newStatus} successfully`);
       fetchJobs();
     } catch (error) {
       console.error('Error updating job status:', error);
-      window.electronAPI.notification.show('Error', 'Failed to update job status');
+      if (error.message.includes('Insufficient stock')) {
+        window.electronAPI.notification.show('Error', error.message);
+      } else {
+        window.electronAPI.notification.show('Error', 'Failed to update job status');
+      }
     } finally {
       setLoading(false);
     }
@@ -129,20 +308,23 @@ const JobCards = () => {
     setSelectedJobCard(jobCard);
     setShowJobDetails(true);
     
-    // Fetch job card parts
+    // Fetch parts from invoices related to this job card
     try {
       const parts = await window.electronAPI.database.query(
         'all',
-        `SELECT jcp.*, p.name as part_name, p.part_number 
-         FROM job_card_parts jcp
-         LEFT JOIN parts p ON jcp.part_id = p.id
-         WHERE jcp.job_card_id = ?
-         ORDER BY jcp.created_at DESC`,
-        [jobCard.id]
+        `SELECT ii.*, p.name as part_name, p.part_number, p.pro_no,
+                ii.quantity, ii.selling_price, ii.discount, ii.amount,
+                i.inv_no, i.invoice_date
+         FROM invoice_items ii
+         LEFT JOIN invoices i ON ii.invoice_id = i.id
+         LEFT JOIN parts p ON ii.code = p.pro_no OR ii.code = p.part_number
+         WHERE i.job_no = ?
+         ORDER BY i.created_at DESC`,
+        [jobCard.job_no]
       );
       setJobCardParts(parts || []);
     } catch (error) {
-      console.error('Error fetching job card parts:', error);
+      console.error('Error fetching job card parts from invoices:', error);
       setJobCardParts([]);
     }
   };
@@ -157,18 +339,39 @@ const JobCards = () => {
     setPrintJobCard(jobCard);
     setShowPrintPreview(true);
     
-    // Fetch job card parts for printing
+    // Fetch parts from invoices and estimate items for printing
     try {
-      const parts = await window.electronAPI.database.query(
+      // Fetch invoice items
+      const invoiceParts = await window.electronAPI.database.query(
         'all',
-        `SELECT jcp.*, p.name as part_name, p.part_number 
-         FROM job_card_parts jcp
-         LEFT JOIN parts p ON jcp.part_id = p.id
-         WHERE jcp.job_card_id = ?
-         ORDER BY jcp.created_at DESC`,
-        [jobCard.id]
+        `SELECT ii.*, p.name as part_name, p.part_number, p.pro_no,
+                ii.quantity, ii.selling_price, ii.discount, ii.amount as total_price,
+                ii.description as name,
+                i.inv_no, i.invoice_date, 'invoice' as source_type
+         FROM invoice_items ii
+         LEFT JOIN invoices i ON ii.invoice_id = i.id
+         LEFT JOIN parts p ON ii.code = p.pro_no OR ii.code = p.part_number
+         WHERE i.job_no = ?
+         ORDER BY i.created_at DESC`,
+        [jobCard.job_no]
       );
-      setPrintJobCardParts(parts || []);
+
+      // Fetch estimate items for this job
+      const estimateItems = await window.electronAPI.database.query(
+        'all',
+        `SELECT ei.*, e.invoice_no, e.job_date, 'estimate' as source_type,
+                ei.type as part_name, ei.description as name,
+                ei.quantity as amount, ei.quantity as total_price
+         FROM estimate_items ei
+         LEFT JOIN estimates e ON ei.estimate_id = e.id
+         WHERE e.job_no = ?
+         ORDER BY e.created_at DESC`,
+        [jobCard.job_no]
+      );
+
+      // Combine both arrays, with estimate items first
+      const combinedParts = [...(estimateItems || []), ...(invoiceParts || [])];
+      setPrintJobCardParts(combinedParts);
     } catch (error) {
       console.error('Error fetching job card parts for print:', error);
       setPrintJobCardParts([]);
@@ -189,7 +392,15 @@ const JobCards = () => {
   };
 
   const calculateTotal = () => {
-    return printJobCardParts.reduce((sum, part) => sum + (part.total_price || 0), 0);
+    return printJobCardParts.reduce((sum, item) => {
+      // For estimate items, don't include in monetary total (they show quantity in value column)
+      if (item.source_type === 'estimate') {
+        return sum;
+      }
+      // Handle job card parts (with 'total_price')
+      const itemValue = item.value || item.total_price || 0;
+      return sum + itemValue;
+    }, 0);
   };
 
   const getStatusIcon = (status) => {
@@ -213,6 +424,7 @@ const JobCards = () => {
         return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400';
     }
   };
+
 
   const PrintPreviewModal = () => (
     <div className="print-preview-overlay">
@@ -697,26 +909,37 @@ const JobCards = () => {
 
                 {/* Parts Used */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Parts Used</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Parts Used (From Invoices)</h3>
                   <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                     {jobCardParts.length > 0 ? (
                       <div className="space-y-3">
                         {jobCardParts.map((part, index) => (
                           <div key={index} className="flex justify-between items-center p-3 bg-white dark:bg-gray-600 rounded-lg">
-                            <div>
+                            <div className="flex-1">
                               <p className="text-sm font-medium text-gray-900 dark:text-white">
-                                {part.part_name || 'Unknown Part'}
+                                {part.part_name || part.description || 'Unknown Part'}
                               </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {part.part_number || 'No part number'}
-                              </p>
+                              <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400">
+                                {part.part_number && (
+                                  <span>Part #: {part.part_number}</span>
+                                )}
+                                {part.pro_no && (
+                                  <span>Pro #: {part.pro_no}</span>
+                                )}
+                                {part.inv_no && (
+                                  <span>Invoice: {part.inv_no}</span>
+                                )}
+                              </div>
                             </div>
                             <div className="text-right">
                               <p className="text-sm font-medium text-gray-900 dark:text-white">
                                 Qty: {part.quantity}
                               </p>
-                              <p className="text-sm text-gray-600 dark:text-gray-400">
-                                ${part.total_price?.toFixed(2) || '0.00'}
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Unit: ${part.selling_price?.toFixed(2) || '0.00'}
+                              </p>
+                              <p className="text-sm font-bold text-gray-900 dark:text-white">
+                                Total: ${part.amount?.toFixed(2) || '0.00'}
                               </p>
                             </div>
                           </div>
@@ -725,14 +948,14 @@ const JobCards = () => {
                           <div className="flex justify-between items-center">
                             <span className="font-medium text-gray-900 dark:text-white">Total Parts Cost:</span>
                             <span className="font-bold text-gray-900 dark:text-white">
-                              ${jobCardParts.reduce((sum, part) => sum + (part.total_price || 0), 0).toFixed(2)}
+                              ${jobCardParts.reduce((sum, part) => sum + (part.amount || 0), 0).toFixed(2)}
                             </span>
                           </div>
                         </div>
                       </div>
                     ) : (
                       <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
-                        No parts used in this job card
+                        No parts have been invoiced for this job card yet
                       </p>
                     )}
                   </div>

@@ -9,7 +9,7 @@
     "react-start": "cross-env BROWSER=none GENERATE_SOURCEMAP=false react-scripts start",
     "electron-start": "electron .",
     "dev": "npm run start",
-    "build": "react-scripts build",
+    "build": "react-scripts build && node scripts/copy-electron.js",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "electron-pack": "electron-builder --publish never",
@@ -70,24 +70,21 @@
   "build": {
     "appId": "com.autopartspro.inventory",
     "productName": "AutoParts Pro",
-    "directories": {
-      "output": "dist"
-    },
     "files": [
       "build/**/*",
-      "electron/**/*",
       "node_modules/**/*",
       "package.json",
       "!**/*.map",
       "!**/src/*",
-      "!**/test/*"
+      "!**/test/*",
+      "!node_modules/**/build/node_gyp_bins/**/*"
     ],
     "includeSubNodeModules": true,
     "extraMetadata": {
-      "main": "electron/main.js"
+      "main": "build/electron/main.js"
     },
-    "mac": {
-      "category": "public.app-category.business"
+    "directories": {
+      "output": "dist-final"
     },
     "win": {
       "target": [
@@ -97,20 +94,14 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "sign": false,
+      "signingHashAlgorithms": []
     },
     "nodeGypRebuild": false,
     "buildDependenciesFromSource": false,
     "asar": false,
     "npmRebuild": false,
-    "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
-      "category": "Office",
-      "icon": "build/icons"
-    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,

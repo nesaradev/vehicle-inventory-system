@@ -193,11 +193,11 @@ const Invoices = () => {
                 <tr key={item.id}>
                   <td>{item.code}</td>
                   <td>{item.description}</td>
-                  <td style={{ textAlign: 'center' }}>${item.unit_price?.toFixed(2) || '0.00'}</td>
+                  <td style={{ textAlign: 'center' }}>Rs. {item.unit_price?.toFixed(2) || '0.00'}</td>
                   <td style={{ textAlign: 'center' }}>{item.quantity}</td>
-                  <td style={{ textAlign: 'right' }}>${(item.selling_price * item.quantity)?.toFixed(2) || '0.00'}</td>
-                  <td style={{ textAlign: 'right' }}>${(item.discount * item.quantity)?.toFixed(2) || '0.00'}</td>
-                  <td style={{ textAlign: 'right' }}>${item.amount?.toFixed(2) || '0.00'}</td>
+                  <td style={{ textAlign: 'right' }}>Rs. {(item.selling_price * item.quantity)?.toFixed(2) || '0.00'}</td>
+                  <td style={{ textAlign: 'right' }}>Rs. {(item.discount * item.quantity)?.toFixed(2) || '0.00'}</td>
+                  <td style={{ textAlign: 'right' }}>Rs. {item.amount?.toFixed(2) || '0.00'}</td>
                 </tr>
               ))}
               {Array.from({ length: Math.max(0, 8 - printInvoiceItems.length) }).map((_, index) => (
@@ -219,15 +219,15 @@ const Invoices = () => {
             <div style={{ border: '1px solid black', padding: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '4px', borderBottom: '1px solid black' }}>
                 <span>Invoice Value</span>
-                <span>${printInvoice?.total_amount?.toFixed(2) || '0.00'}</span>
+                <span>Rs. {printInvoice?.total_amount?.toFixed(2) || '0.00'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px', paddingBottom: '4px', borderBottom: '1px solid black' }}>
                 <span>Advance Paid</span>
-                <span>${printInvoice?.advance_paid?.toFixed(2) || '0.00'}</span>
+                <span>Rs. {printInvoice?.advance_paid?.toFixed(2) || '0.00'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px', fontWeight: 'bold' }}>
                 <span>Balance Amount</span>
-                <span>${printInvoice?.balance_due?.toFixed(2) || '0.00'}</span>
+                <span>Rs. {printInvoice?.balance_due?.toFixed(2) || '0.00'}</span>
               </div>
             </div>
           </div>
@@ -554,7 +554,7 @@ const Invoices = () => {
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                    ${(invoice.balance_due || 0).toFixed(2)}
+                    Rs. {(invoice.balance_due || 0).toFixed(2)}
                   </p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     {invoice.items_count || 0} items
@@ -661,19 +661,19 @@ const Invoices = () => {
                       <FiDollarSign className="w-4 h-4 text-gray-400" />
                       <span className="text-sm text-gray-600 dark:text-gray-400">Total Amount:</span>
                       <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        ${selectedInvoice.total_amount?.toFixed(2) || '0.00'}
+                        Rs. {selectedInvoice.total_amount?.toFixed(2) || '0.00'}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-gray-600 dark:text-gray-400">Advance Paid:</span>
                       <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                        ${selectedInvoice.advance_paid?.toFixed(2) || '0.00'}
+                        Rs. {selectedInvoice.advance_paid?.toFixed(2) || '0.00'}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-gray-600 dark:text-gray-400">Balance Due:</span>
                       <span className="text-sm font-bold text-green-600 dark:text-green-400">
-                        ${selectedInvoice.balance_due?.toFixed(2) || '0.00'}
+                        Rs. {selectedInvoice.balance_due?.toFixed(2) || '0.00'}
                       </span>
                     </div>
                   </div>
@@ -746,16 +746,16 @@ const Invoices = () => {
                                 {item.quantity}
                               </td>
                               <td className="px-4 py-4 text-sm text-right text-gray-900 dark:text-white">
-                                ${item.unit_price?.toFixed(2) || '0.00'}
+                                Rs. {item.unit_price?.toFixed(2) || '0.00'}
                               </td>
                               <td className="px-4 py-4 text-sm text-right text-gray-900 dark:text-white">
-                                ${item.selling_price?.toFixed(2) || '0.00'}
+                                Rs. {item.selling_price?.toFixed(2) || '0.00'}
                               </td>
                               <td className="px-4 py-4 text-sm text-right text-gray-900 dark:text-white">
-                                ${item.discount?.toFixed(2) || '0.00'}
+                                Rs. {item.discount?.toFixed(2) || '0.00'}
                               </td>
                               <td className="px-4 py-4 text-sm text-right font-medium text-gray-900 dark:text-white">
-                                ${item.amount?.toFixed(2) || '0.00'}
+                                Rs. {item.amount?.toFixed(2) || '0.00'}
                               </td>
                             </tr>
                           ))}
@@ -766,7 +766,7 @@ const Invoices = () => {
                               Total:
                             </td>
                             <td className="px-4 py-3 text-right font-bold text-gray-900 dark:text-white">
-                              ${invoiceItems.reduce((sum, item) => sum + (item.amount || 0), 0).toFixed(2)}
+                              Rs. {invoiceItems.reduce((sum, item) => sum + (item.amount || 0), 0).toFixed(2)}
                             </td>
                           </tr>
                           <tr>
@@ -774,7 +774,7 @@ const Invoices = () => {
                               Advance Paid:
                             </td>
                             <td className="px-4 py-3 text-right font-medium text-blue-600 dark:text-blue-400">
-                              ${selectedInvoice.advance_paid?.toFixed(2) || '0.00'}
+                              Rs. {selectedInvoice.advance_paid?.toFixed(2) || '0.00'}
                             </td>
                           </tr>
                           <tr>
@@ -782,7 +782,7 @@ const Invoices = () => {
                               Balance Due:
                             </td>
                             <td className="px-4 py-3 text-right font-bold text-green-600 dark:text-green-400">
-                              ${selectedInvoice.balance_due?.toFixed(2) || '0.00'}
+                              Rs. {selectedInvoice.balance_due?.toFixed(2) || '0.00'}
                             </td>
                           </tr>
                         </tfoot>

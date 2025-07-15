@@ -123,7 +123,7 @@ const Estimates = () => {
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                    ${(estimate.total_amount || 0).toFixed(2)}
+                    Rs. {(estimate.total_amount || 0).toFixed(2)}
                   </p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     {estimate.items_count || 0} items
@@ -149,12 +149,6 @@ const Estimates = () => {
                   title="View Details"
                 >
                   <FiEye className="w-4 h-4" />
-                </button>
-                <button
-                  className="btn-primary"
-                  onClick={() => window.print()}
-                >
-                  Print
                 </button>
               </div>
             </div>
@@ -222,14 +216,14 @@ const Estimates = () => {
                       <FiDollarSign className="w-4 h-4 text-gray-400" />
                       <span className="text-sm text-gray-600 dark:text-gray-400">Total Amount:</span>
                       <span className="text-sm font-bold text-green-600 dark:text-green-400">
-                        ${selectedEstimate.total_amount?.toFixed(2) || '0.00'}
+                        Rs. {selectedEstimate.total_amount?.toFixed(2) || '0.00'}
                       </span>
                     </div>
                     {selectedEstimate.discount > 0 && (
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-gray-600 dark:text-gray-400">Discount:</span>
                         <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                          -${selectedEstimate.discount?.toFixed(2) || '0.00'}
+                          -Rs. {selectedEstimate.discount?.toFixed(2) || '0.00'}
                         </span>
                       </div>
                     )}
@@ -311,13 +305,13 @@ const Estimates = () => {
                                 {item.description}
                               </td>
                               <td className="px-4 py-4 text-sm text-right text-gray-900 dark:text-white">
-                                ${item.price?.toFixed(2) || '0.00'}
+                                Rs. {item.price?.toFixed(2) || '0.00'}
                               </td>
                               <td className="px-4 py-4 text-sm text-right text-gray-900 dark:text-white">
                                 {item.quantity}
                               </td>
                               <td className="px-4 py-4 text-sm text-right font-medium text-gray-900 dark:text-white">
-                                ${item.value?.toFixed(2) || '0.00'}
+                                Rs. {item.value?.toFixed(2) || '0.00'}
                               </td>
                               <td className="px-4 py-4 text-sm text-center text-gray-900 dark:text-white">
                                 {item.fb}
@@ -331,7 +325,7 @@ const Estimates = () => {
                               Total:
                             </td>
                             <td className="px-4 py-3 text-right font-bold text-gray-900 dark:text-white">
-                              ${estimateItems.reduce((sum, item) => sum + (item.value || 0), 0).toFixed(2)}
+                              Rs. {estimateItems.reduce((sum, item) => sum + (item.value || 0), 0).toFixed(2)}
                             </td>
                             <td className="px-4 py-3"></td>
                           </tr>
@@ -341,7 +335,7 @@ const Estimates = () => {
                                 Discount:
                               </td>
                               <td className="px-4 py-3 text-right font-medium text-red-600 dark:text-red-400">
-                                -${selectedEstimate.discount?.toFixed(2) || '0.00'}
+                                -Rs. {selectedEstimate.discount?.toFixed(2) || '0.00'}
                               </td>
                               <td className="px-4 py-3"></td>
                             </tr>
@@ -351,7 +345,7 @@ const Estimates = () => {
                               Final Total:
                             </td>
                             <td className="px-4 py-3 text-right font-bold text-green-600 dark:text-green-400">
-                              ${((estimateItems.reduce((sum, item) => sum + (item.value || 0), 0)) - (selectedEstimate.discount || 0)).toFixed(2)}
+                              Rs. {((estimateItems.reduce((sum, item) => sum + (item.value || 0), 0)) - (selectedEstimate.discount || 0)).toFixed(2)}
                             </td>
                             <td className="px-4 py-3"></td>
                           </tr>

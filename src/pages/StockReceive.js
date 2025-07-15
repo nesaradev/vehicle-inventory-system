@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiArrowLeft, FiSave, FiPlus, FiTrash2, FiSearch, FiPrinter, FiEye, FiX } from 'react-icons/fi';
 
@@ -9,6 +9,11 @@ const StockReceive = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showPartSelector, setShowPartSelector] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
+  const [isDraftLoaded, setIsDraftLoaded] = useState(false);
+  const [preventAutoSave, setPreventAutoSave] = useState(false);
+  const preventAutoSaveRef = useRef(false);
+  const [todaysReceiveCount, setTodaysReceiveCount] = useState(0);
 
   const [formData, setFormData] = useState({
     grn_no: '',
@@ -24,34 +29,243 @@ const StockReceive = () => {
   });
 
   const [selectedParts, setSelectedParts] = useState([]);
+  const [undocumentedStock, setUndocumentedStock] = useState({});
+
+  // Draft management functions
+  const saveDraft = () => {
+    if (preventAutoSaveRef.current) return; // Don't save if auto-save is prevented
+    
+    if (formData.supplier_name || formData.lot_name || selectedParts.length > 0) {
+      const draftData = {
+        formData,
+        selectedParts,
+        searchTerm,
+        showPartSelector,
+        timestamp: new Date().toISOString()
+      };
+      localStorage.setItem('stockReceiveDraft', JSON.stringify(draftData));
+      setHasDraft(true);
+    }
+  };
+
+  const loadDraft = () => {
+    try {
+      const savedDraft = localStorage.getItem('stockReceiveDraft');
+      if (savedDraft) {
+        const draftData = JSON.parse(savedDraft);
+        // Update date to current date but keep other data
+        const updatedFormData = {
+          ...draftData.formData,
+          rec_date: new Date().toISOString().split('T')[0]
+        };
+        setFormData(updatedFormData);
+        setSelectedParts(draftData.selectedParts || []);
+        setSearchTerm(draftData.searchTerm || '');
+        setShowPartSelector(draftData.showPartSelector || false);
+        setIsDraftLoaded(true);
+        setHasDraft(true);
+        // Recalculate totals after loading
+        setTimeout(() => calculateTotals(), 100);
+      }
+    } catch (error) {
+      console.error('Error loading draft:', error);
+    }
+  };
+
+  const clearDraft = () => {
+    localStorage.removeItem('stockReceiveDraft');
+    setHasDraft(false);
+    setIsDraftLoaded(false);
+  };
+
+  const handleCancel = () => {
+    // Prevent auto-save during and after reset
+    setPreventAutoSave(true);
+    preventAutoSaveRef.current = true;
+    
+    // Clear the draft
+    clearDraft();
+    
+    // Reset form to initial state
+    setFormData({
+      grn_no: '',
+      rec_date: new Date().toISOString().split('T')[0],
+      sup_ref: '',
+      supplier_name: '',
+      lot_name: '',
+      remarks: '',
+      items: [],
+      total_value: 0,
+      discount_value: 0,
+      final_value: 0
+    });
+    
+    // Reset selected parts
+    setSelectedParts([]);
+    
+    // Reset other state
+    setSearchTerm('');
+    setShowPartSelector(false);
+    
+    // Regenerate GRN number
+    generateGRNNo();
+    
+    // Re-enable auto-save after a short delay
+    setTimeout(() => {
+      setPreventAutoSave(false);
+      preventAutoSaveRef.current = false;
+    }, 1000);
+    
+    window.electronAPI.notification.show('Info', 'Form cleared and draft removed');
+  };
+
+  const checkForDraft = () => {
+    const savedDraft = localStorage.getItem('stockReceiveDraft');
+    setHasDraft(!!savedDraft);
+    return !!savedDraft;
+  };
+
+  const checkTodaysReceiveCount = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const result = await window.electronAPI.database.query(
+        'get',
+        `SELECT COUNT(*) as count FROM stock_receives WHERE DATE(rec_date) = ?`,
+        [today]
+      );
+      setTodaysReceiveCount(result?.count || 0);
+    } catch (error) {
+      console.error('Error checking today\'s receive count:', error);
+    }
+  };
+
+  const fetchUndocumentedStock = async () => {
+    try {
+      const result = await window.electronAPI.database.query(
+        'all',
+        `SELECT 
+          sm.part_id,
+          p.name,
+          p.part_number,
+          SUM(sm.quantity) as available_qty
+         FROM stock_movements sm
+         JOIN parts p ON sm.part_id = p.id
+         WHERE sm.movement_type = 'IN' 
+         AND (sm.grn_documented = 0 OR sm.grn_documented IS NULL)
+         GROUP BY sm.part_id, p.name, p.part_number
+         HAVING SUM(sm.quantity) > 0`
+      );
+      
+      const undocumented = {};
+      result?.forEach(row => {
+        undocumented[row.part_id] = {
+          available_qty: row.available_qty,
+          name: row.name,
+          part_number: row.part_number
+        };
+      });
+      setUndocumentedStock(undocumented);
+    } catch (error) {
+      console.error('Error fetching undocumented stock:', error);
+    }
+  };
 
   useEffect(() => {
     fetchParts();
     generateGRNNo();
+    checkTodaysReceiveCount();
+    fetchUndocumentedStock();
+    
+    // Check for existing draft on component mount
+    if (checkForDraft()) {
+      // Auto-load draft after a brief delay to let other initialization complete
+      setTimeout(() => {
+        loadDraft();
+      }, 100);
+    }
   }, []);
+
+  // Auto-save draft periodically and when user navigates away
+  useEffect(() => {
+    // Auto-save every 30 seconds if there's meaningful data
+    const autoSaveInterval = setInterval(() => {
+      if (formData.supplier_name || formData.lot_name || selectedParts.length > 0) {
+        saveDraft();
+      }
+    }, 30000);
+
+    // Save draft when user navigates away
+    const handleBeforeUnload = () => {
+      if (!preventAutoSaveRef.current) saveDraft();
+    };
+
+    // Save draft when component unmounts (navigation)
+    const handleUnload = () => {
+      if (!preventAutoSaveRef.current) saveDraft();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('unload', handleUnload);
+
+    return () => {
+      clearInterval(autoSaveInterval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('unload', handleUnload);
+      // Save one final time when component unmounts
+      if (!preventAutoSaveRef.current) saveDraft();
+    };
+  }, [formData, selectedParts, searchTerm, showPartSelector]);
+
+  // Save draft when form data changes (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (formData.supplier_name || formData.lot_name || selectedParts.length > 0) {
+        saveDraft();
+      }
+    }, 2000); // Wait 2 seconds after last change
+
+    return () => clearTimeout(timeoutId);
+  }, [formData, selectedParts]);
 
   const generateGRNNo = async () => {
     try {
-      const result = await window.electronAPI.database.query(
+      const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
+      
+      // Check if a GRN already exists for today
+      const existingGRN = await window.electronAPI.database.query(
         'get',
-        `SELECT current_value FROM counters WHERE id = 'grn_no'`
+        `SELECT grn_no FROM stock_receives WHERE DATE(rec_date) = ? ORDER BY created_at DESC LIMIT 1`,
+        [today]
       );
-
-      let nextValue;
-      if (result && result.current_value !== undefined) {
-        nextValue = result.current_value + 1;
+      
+      if (existingGRN) {
+        // Use existing GRN for today
+        setFormData(prev => ({ ...prev, grn_no: existingGRN.grn_no }));
+        console.log('Using existing GRN for today:', existingGRN.grn_no);
       } else {
-        nextValue = 1;
-        // Initialize counter if it doesn't exist
-        await window.electronAPI.database.query(
-          'run',
-          `INSERT OR IGNORE INTO counters (id, current_value) VALUES ('grn_no', 0)`
+        // Generate new GRN for today
+        const result = await window.electronAPI.database.query(
+          'get',
+          `SELECT current_value FROM counters WHERE id = 'grn_no'`
         );
-      }
 
-      // Show preview without updating the counter
-      const grnNo = `GRN${nextValue.toString().padStart(6, '0')}`;
-      setFormData(prev => ({ ...prev, grn_no: grnNo }));
+        let nextValue;
+        if (result && result.current_value !== undefined) {
+          nextValue = result.current_value + 1;
+        } else {
+          nextValue = 1;
+          // Initialize counter if it doesn't exist
+          await window.electronAPI.database.query(
+            'run',
+            `INSERT OR IGNORE INTO counters (id, current_value) VALUES ('grn_no', 0)`
+          );
+        }
+
+        // Show preview without updating the counter
+        const grnNo = `GRN${nextValue.toString().padStart(6, '0')}`;
+        setFormData(prev => ({ ...prev, grn_no: grnNo }));
+        console.log('Generated new GRN for today:', grnNo);
+      }
     } catch (error) {
       console.error('Error generating GRN No:', error);
     }
@@ -59,27 +273,44 @@ const StockReceive = () => {
 
   const generateActualGRNNo = async () => {
     try {
-      const result = await window.electronAPI.database.query(
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Check if a GRN already exists for today
+      const existingGRN = await window.electronAPI.database.query(
         'get',
-        `SELECT current_value FROM counters WHERE id = 'grn_no'`
+        `SELECT grn_no FROM stock_receives WHERE DATE(rec_date) = ? ORDER BY created_at DESC LIMIT 1`,
+        [today]
       );
-
-      let nextValue;
-      if (result && result.current_value !== undefined) {
-        nextValue = result.current_value + 1;
+      
+      if (existingGRN) {
+        // Use existing GRN for today - don't increment counter
+        console.log('Using existing GRN for today:', existingGRN.grn_no);
+        return existingGRN.grn_no;
       } else {
-        nextValue = 1;
+        // Generate new GRN for today and increment counter
+        const result = await window.electronAPI.database.query(
+          'get',
+          `SELECT current_value FROM counters WHERE id = 'grn_no'`
+        );
+
+        let nextValue;
+        if (result && result.current_value !== undefined) {
+          nextValue = result.current_value + 1;
+        } else {
+          nextValue = 1;
+        }
+
+        // Actually update the counter
+        await window.electronAPI.database.query(
+          'run',
+          `UPDATE counters SET current_value = ? WHERE id = 'grn_no'`,
+          [nextValue]
+        );
+
+        const grnNo = `GRN${nextValue.toString().padStart(6, '0')}`;
+        console.log('Generated new GRN for today:', grnNo);
+        return grnNo;
       }
-
-      // Actually update the counter
-      await window.electronAPI.database.query(
-        'run',
-        `UPDATE counters SET current_value = ? WHERE id = 'grn_no'`,
-        [nextValue]
-      );
-
-      const grnNo = `GRN${nextValue.toString().padStart(6, '0')}`;
-      return grnNo;
     } catch (error) {
       console.error('Error generating actual GRN No:', error);
       return null;
@@ -99,11 +330,27 @@ const StockReceive = () => {
   };
 
   const handleAddPart = (part) => {
+    const availableQty = undocumentedStock[part.id]?.available_qty || 0;
+    
+    if (availableQty <= 0) {
+      window.electronAPI.notification.show('Error', 
+        `No undocumented stock available for ${part.name}. Please add stock first through "Add Stock" function.`);
+      return;
+    }
+    
     const existingIndex = selectedParts.findIndex(p => p.id === part.id);
     if (existingIndex >= 0) {
       const updated = [...selectedParts];
-      updated[existingIndex].rec_qty++;
-      updated[existingIndex].item_value = updated[existingIndex].unit_price * updated[existingIndex].rec_qty;
+      const newQty = updated[existingIndex].rec_qty + 1;
+      
+      if (newQty > availableQty) {
+        window.electronAPI.notification.show('Error', 
+          `Cannot document ${newQty} units. Only ${availableQty} units available for documentation for ${part.name}`);
+        return;
+      }
+      
+      updated[existingIndex].rec_qty = newQty;
+      updated[existingIndex].item_value = updated[existingIndex].unit_price * newQty;
       updated[existingIndex].final_value = updated[existingIndex].item_value - (updated[existingIndex].item_value * updated[existingIndex].dis_percent / 100);
       setSelectedParts(updated);
     } else {
@@ -126,8 +373,15 @@ const StockReceive = () => {
 
   const handleQuantityChange = (index, quantity) => {
     const updated = [...selectedParts];
+    const part = updated[index];
+    const availableQty = undocumentedStock[part.id]?.available_qty || 0;
+    
     if (quantity <= 0) {
       updated.splice(index, 1);
+    } else if (quantity > availableQty) {
+      window.electronAPI.notification.show('Error', 
+        `Cannot document ${quantity} units. Only ${availableQty} units available for documentation for ${part.item_description}`);
+      return;
     } else {
       updated[index].rec_qty = quantity;
       updated[index].item_value = updated[index].unit_price * quantity;
@@ -174,10 +428,12 @@ const StockReceive = () => {
     calculateTotals();
   };
 
-  const filteredParts = parts.filter(part =>
-    part.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    part.part_number.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredParts = parts.filter(part => {
+    const hasUndocumentedStock = undocumentedStock[part.id];
+    const matchesSearch = part.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         part.part_number.toLowerCase().includes(searchTerm.toLowerCase());
+    return hasUndocumentedStock && matchesSearch;
+  });
 
   const handleSave = async () => {
     if (!formData.supplier_name) {
@@ -188,6 +444,16 @@ const StockReceive = () => {
     if (selectedParts.length === 0) {
       window.electronAPI.notification.show('Error', 'Please add at least one part');
       return;
+    }
+
+    // Validate all quantities against available undocumented stock
+    for (const part of selectedParts) {
+      const availableQty = undocumentedStock[part.id]?.available_qty || 0;
+      if (part.rec_qty > availableQty) {
+        window.electronAPI.notification.show('Error', 
+          `Cannot save GRN. Part "${part.item_description}" quantity (${part.rec_qty}) exceeds available undocumented stock (${availableQty}). Please adjust quantities or add more stock first.`);
+        return;
+      }
     }
 
     setLoading(true);
@@ -245,26 +511,33 @@ const StockReceive = () => {
             ]
           );
 
-          // Update part stock
+          // Mark stock movements as documented with this GRN
           await window.electronAPI.database.query(
             'run',
-            "UPDATE parts SET current_stock = current_stock + ?, updated_at = datetime('now','localtime') WHERE id = ?",
-            [part.rec_qty, part.id]
-          );
-
-          // Record stock movement
-          await window.electronAPI.database.query(
-            'run',
-            `INSERT INTO stock_movements (
-              part_id, movement_type, quantity, cost_price, notes
-            ) VALUES (?, ?, ?, ?, ?)`,
-            [part.id, 'IN', part.rec_qty, part.unit_price, `Stock received via GRN #${actualGRNNo}`]
+            `UPDATE stock_movements 
+             SET grn_documented = 1, grn_no = ?
+             WHERE part_id = ? 
+             AND movement_type = 'IN' 
+             AND (grn_documented = 0 OR grn_documented IS NULL)
+             AND id IN (
+               SELECT id FROM stock_movements 
+               WHERE part_id = ? AND movement_type = 'IN' 
+               AND (grn_documented = 0 OR grn_documented IS NULL)
+               ORDER BY created_at ASC 
+               LIMIT ?
+             )`,
+            [actualGRNNo, part.id, part.id, part.rec_qty]
           );
         }
 
         // Update the form data with the actual GRN number
         setFormData(prev => ({ ...prev, grn_no: actualGRNNo }));
 
+        // Clear draft after successful save
+        clearDraft();
+        // Update today's receive count and refresh undocumented stock
+        checkTodaysReceiveCount();
+        fetchUndocumentedStock();
         window.electronAPI.notification.show('Success', `Stock received successfully - GRN #${actualGRNNo}`);
         navigate('/stock-receives');
       }
@@ -330,7 +603,7 @@ const StockReceive = () => {
             <div className="company-details">
               166/3, Kaolin Refinery Road, Werahera, Boralesgamuwa, Sri Lanka.<br/>
               Tel: 0706333555<br/>
-              E-mail: autoparts@email.com
+              E-mail: vishwa.motors@yahoo.com
             </div>
           </div>
 
@@ -676,7 +949,53 @@ const StockReceive = () => {
       </div>
 
       <div className="bg-gray-800 rounded-lg shadow-2xl p-6 border border-gray-700">
-        <h1 className="text-2xl font-bold text-white mb-6">Stock Receive</h1>
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-white">Stock Receive (GRN)</h1>
+              <p className="text-sm text-gray-400 mt-1">
+                Goods Received Note - For tracking and documenting daily stock receipts only
+              </p>
+            </div>
+            
+            {/* Draft Status Indicator */}
+            {hasDraft && (
+              <div className="flex items-center gap-2 bg-yellow-900/30 border border-yellow-600 rounded-lg px-3 py-2">
+                <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                <span className="text-yellow-400 text-sm font-medium">Draft Saved</span>
+                <button
+                  onClick={clearDraft}
+                  className="text-yellow-400 hover:text-yellow-300 ml-2 text-xs underline"
+                  title="Clear draft"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+            
+            {/* Today's Receive Count */}
+            <div className="flex items-center gap-2 bg-green-900/30 border border-green-600 rounded-lg px-3 py-2">
+              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+              <span className="text-green-400 text-sm font-medium">
+                Today's Receipts: {todaysReceiveCount}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Information Notice */}
+        <div className="mb-6 bg-blue-900/30 border border-blue-600 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-5 h-5 text-blue-400 mt-0.5">ℹ️</div>
+            <div>
+              <h3 className="text-blue-400 font-semibold">Important: Daily GRN System with Stock Validation</h3>
+              <p className="text-blue-300 text-sm mt-1">
+                One GRN number per day for all stock received on that date. <strong>GRN quantities must match stock added through "Add Stock" function.</strong> 
+                You can only document stock that has been previously added but not yet documented in a GRN. The system will prevent saving if quantities exceed available undocumented stock.
+              </p>
+            </div>
+          </div>
+        </div>
 
         {/* Header Form */}
         <div className="grid grid-cols-4 gap-6 mb-6">
@@ -690,7 +1009,7 @@ const StockReceive = () => {
                 className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2 text-sm"
               />
               <span className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-yellow-400">
-                (Preview)
+                (Daily GRN)
               </span>
             </div>
           </div>
@@ -752,13 +1071,22 @@ const StockReceive = () => {
         <div className="mb-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold text-white">Items</h3>
-            <button
-              onClick={() => setShowPartSelector(!showPartSelector)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <FiPlus />
-              Add Item
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={fetchUndocumentedStock}
+                className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm"
+                title="Refresh available stock data"
+              >
+                🔄 Refresh
+              </button>
+              <button
+                onClick={() => setShowPartSelector(!showPartSelector)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <FiPlus />
+                Add Item
+              </button>
+            </div>
           </div>
 
           {showPartSelector && (
@@ -787,6 +1115,9 @@ const StockReceive = () => {
                         <p className="text-sm text-gray-400">
                           {part.part_number} • Stock: {part.current_stock}
                         </p>
+                        <p className="text-sm text-green-400">
+                          Available for GRN: {undocumentedStock[part.id]?.available_qty || 0}
+                        </p>
                       </div>
                       <p className="font-medium text-white">
                         ${part.cost_price?.toFixed(2) || '0.00'}
@@ -794,6 +1125,16 @@ const StockReceive = () => {
                     </div>
                   </div>
                 ))}
+                {filteredParts.length === 0 && (
+                  <div className="text-center py-8">
+                    <p className="text-gray-400 text-sm">
+                      {Object.keys(undocumentedStock).length === 0 
+                        ? "No parts have undocumented stock. Please add stock first using 'Add Stock' function."
+                        : "No parts match your search that have undocumented stock available."
+                      }
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -817,7 +1158,13 @@ const StockReceive = () => {
                 {selectedParts.map((part, index) => (
                   <tr key={part.id} className="border-t border-gray-700">
                     <td className="border-r border-gray-700 px-3 py-2 text-white">{part.pro_no}</td>
-                    <td className="border-r border-gray-700 px-3 py-2 text-white">{part.item_description}</td>
+                    <td className="border-r border-gray-700 px-3 py-2 text-white">
+                      {part.item_description}
+                      <br />
+                      <span className="text-xs text-green-400">
+                        Max: {undocumentedStock[part.id]?.available_qty || 0}
+                      </span>
+                    </td>
                     <td className="border-r border-gray-700 px-3 py-2 text-center">
                       <input
                         type="number"
@@ -831,9 +1178,14 @@ const StockReceive = () => {
                       <input
                         type="number"
                         min="1"
+                        max={undocumentedStock[part.id]?.available_qty || 0}
                         value={part.rec_qty}
                         onChange={(e) => handleQuantityChange(index, parseInt(e.target.value) || 0)}
-                        className="w-16 text-center bg-gray-700 border border-gray-600 text-white rounded px-2 py-1 font-medium text-sm"
+                        className={`w-16 text-center bg-gray-700 border rounded px-2 py-1 font-medium text-sm ${
+                          part.rec_qty > (undocumentedStock[part.id]?.available_qty || 0) 
+                            ? 'border-red-500 text-red-400' 
+                            : 'border-gray-600 text-white'
+                        }`}
                       />
                     </td>
                     <td className="border-r border-gray-700 px-3 py-2 text-right text-white font-medium">
@@ -908,25 +1260,11 @@ const StockReceive = () => {
         {/* Action Buttons */}
         <div className="flex justify-end gap-4 pt-4 border-t border-gray-700">
           <button
-            onClick={() => {
-              setSelectedParts([]);
-              setFormData({
-                grn_no: '',
-                rec_date: new Date().toISOString().split('T')[0],
-                sup_ref: '',
-                supplier_name: '',
-                lot_name: '',
-                remarks: '',
-                items: [],
-                total_value: 0,
-                discount_value: 0,
-                final_value: 0
-              });
-              generateGRNNo();
-            }}
-            className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+            onClick={handleCancel}
+            className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
           >
-            New
+            <FiX />
+            Cancel
           </button>
           <button
             onClick={handlePrintPreview}

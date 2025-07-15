@@ -7,6 +7,7 @@ const StockReceives = () => {
   const [filteredStockReceives, setFilteredStockReceives] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
+  const [dailySummary, setDailySummary] = useState({});
   const [selectedStockReceive, setSelectedStockReceive] = useState(null);
   const [showStockReceiveDetails, setShowStockReceiveDetails] = useState(false);
   const [stockReceiveItems, setStockReceiveItems] = useState([]);
@@ -16,6 +17,7 @@ const StockReceives = () => {
 
   useEffect(() => {
     fetchStockReceives();
+    fetchDailySummary();
   }, []);
 
   useEffect(() => {
@@ -39,6 +41,43 @@ const StockReceives = () => {
       console.error('Error fetching stock receives:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDailySummary = async () => {
+    try {
+      const result = await window.electronAPI.database.query(
+        'all',
+        `SELECT 
+          DATE(rec_date) as date,
+          grn_no,
+          COUNT(*) as receive_count,
+          SUM(final_value) as total_value
+         FROM stock_receives 
+         GROUP BY DATE(rec_date), grn_no
+         ORDER BY date DESC, grn_no DESC
+         LIMIT 10`
+      );
+      
+      // Group by date for display
+      const grouped = {};
+      result?.forEach(row => {
+        if (!grouped[row.date]) {
+          grouped[row.date] = {
+            date: row.date,
+            grn_numbers: [],
+            total_receives: 0,
+            total_value: 0
+          };
+        }
+        grouped[row.date].grn_numbers.push(row.grn_no);
+        grouped[row.date].total_receives += row.receive_count;
+        grouped[row.date].total_value += row.total_value;
+      });
+      
+      setDailySummary(grouped);
+    } catch (error) {
+      console.error('Error fetching daily summary:', error);
     }
   };
 
@@ -506,6 +545,38 @@ const StockReceives = () => {
           />
         </div>
       </div>
+
+      {/* Daily Summary */}
+      {Object.keys(dailySummary).length > 0 && (
+        <div className="card p-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Daily GRN Summary</h3>
+          <div className="grid gap-3">
+            {Object.values(dailySummary).map((day, index) => (
+              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <FiCalendar className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      {new Date(day.date).toLocaleDateString()}
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      GRN: {day.grn_numbers.join(', ')}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-medium text-gray-900 dark:text-white">
+                    ${day.total_value.toFixed(2)}
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {day.total_receives} receipt{day.total_receives !== 1 ? 's' : ''}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stock Receives List */}
       <div className="grid gap-6">

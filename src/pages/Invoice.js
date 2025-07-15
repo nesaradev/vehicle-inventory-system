@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiArrowLeft, FiSave, FiPrinter, FiPlus, FiTrash2, FiSearch, FiX, FiEye } from 'react-icons/fi';
 
@@ -10,6 +10,13 @@ const Invoice = () => {
   const [showPartSelector, setShowPartSelector] = useState(false);
   const [jobNumbers, setJobNumbers] = useState([]);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
+  const [isDraftLoaded, setIsDraftLoaded] = useState(false);
+  const [isReadOnly, setIsReadOnly] = useState(false);
+  const [preventAutoSave, setPreventAutoSave] = useState(false);
+  const preventAutoSaveRef = useRef(false);
+  const [jobNoSearch, setJobNoSearch] = useState('');
+  const [showJobDropdown, setShowJobDropdown] = useState(false);
 
   const [formData, setFormData] = useState({
     // Invoice header
@@ -29,15 +36,274 @@ const Invoice = () => {
   });
 
   const [selectedParts, setSelectedParts] = useState([]);
+  const [vehicleInvoiceHistory, setVehicleInvoiceHistory] = useState([]);
+
+  // Draft management functions
+  const saveDraft = () => {
+    if (preventAutoSaveRef.current) return; // Don't save if auto-save is prevented
+    
+    if (formData.customer_name || formData.vehicle_no || selectedParts.length > 0) {
+      const draftData = {
+        formData,
+        selectedParts,
+        searchTerm,
+        showPartSelector,
+        timestamp: new Date().toISOString()
+      };
+      localStorage.setItem('invoiceDraft', JSON.stringify(draftData));
+      setHasDraft(true);
+    }
+  };
+
+  const loadDraft = async () => {
+    try {
+      const savedDraft = localStorage.getItem('invoiceDraft');
+      if (savedDraft) {
+        const draftData = JSON.parse(savedDraft);
+        
+        // Validate that the job_no in the draft still exists
+        if (draftData.formData.job_no) {
+          const jobExists = await window.electronAPI.database.query(
+            'get',
+            `SELECT * FROM job_cards WHERE job_no = ?`,
+            [draftData.formData.job_no]
+          );
+          
+          if (!jobExists) {
+            // Job card doesn't exist anymore - clear the draft
+            console.log('Draft contains invalid job number, clearing draft');
+            clearDraft();
+            return;
+          }
+        }
+        
+        // Update date to current date but keep other data
+        const updatedFormData = {
+          ...draftData.formData,
+          date: new Date().toISOString().split('T')[0]
+        };
+        setFormData(updatedFormData);
+        setSelectedParts(draftData.selectedParts || []);
+        setSearchTerm(draftData.searchTerm || '');
+        setShowPartSelector(draftData.showPartSelector || false);
+        setIsDraftLoaded(true);
+        setHasDraft(true);
+      }
+    } catch (error) {
+      console.error('Error loading draft:', error);
+    }
+  };
+
+  const clearDraft = () => {
+    localStorage.removeItem('invoiceDraft');
+    setHasDraft(false);
+    setIsDraftLoaded(false);
+  };
+
+  const handleCancel = () => {
+    // Prevent auto-save during and after reset
+    setPreventAutoSave(true);
+    preventAutoSaveRef.current = true;
+    
+    // Clear the draft
+    clearDraft();
+    
+    // Reset form to initial state
+    setFormData({
+      // Invoice header
+      inv_no: '',
+      customer_name: '',
+      date: new Date().toISOString().split('T')[0],
+      job_no: '',
+      vehicle_no: '',
+      
+      // Invoice items
+      items: [],
+      
+      // Customer totals
+      customer_total_outstanding: 0,
+      advance_paid: 0,
+      balance_due: 0
+    });
+    
+    // Reset selected parts
+    setSelectedParts([]);
+    
+    // Reset other state
+    setSearchTerm('');
+    setShowPartSelector(false);
+    setIsReadOnly(false);
+    setVehicleInvoiceHistory([]);
+    
+    // Don't regenerate temp invoice number after cancel - let user start fresh
+    
+    // Re-enable auto-save after a short delay
+    setTimeout(() => {
+      setPreventAutoSave(false);
+      preventAutoSaveRef.current = false;
+    }, 1000);
+    
+    window.electronAPI.notification.show('Info', 'Form cleared and draft removed');
+  };
+
+  const checkForDraft = () => {
+    const savedDraft = localStorage.getItem('invoiceDraft');
+    setHasDraft(!!savedDraft);
+    return !!savedDraft;
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!event.target.closest('.job-dropdown-container')) {
+        setShowJobDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
-    fetchParts();
-    fetchJobNumbers();
-    generateTempInvoiceNo();
+    const initializeData = async () => {
+      await fetchParts();
+      await fetchJobNumbers();
+      
+      // Check for existing draft first
+      if (checkForDraft()) {
+        // Auto-load draft after a brief delay to let other initialization complete
+        setTimeout(() => {
+          loadDraft();
+        }, 100);
+      } else {
+        // No draft, generate temp invoice number (this will check for pending estimates)
+        generateTempInvoiceNo();
+      }
+    };
+    
+    initializeData();
   }, []);
+
+  // Auto-save draft periodically and when user navigates away
+  useEffect(() => {
+    // Auto-save every 30 seconds if there's meaningful data
+    const autoSaveInterval = setInterval(() => {
+      if (formData.customer_name || formData.vehicle_no || selectedParts.length > 0) {
+        saveDraft();
+      }
+    }, 30000);
+
+    // Save draft when user navigates away
+    const handleBeforeUnload = () => {
+      if (!preventAutoSaveRef.current) saveDraft();
+    };
+
+    // Save draft when component unmounts (navigation)
+    const handleUnload = () => {
+      if (!preventAutoSaveRef.current) saveDraft();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('unload', handleUnload);
+
+    return () => {
+      clearInterval(autoSaveInterval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('unload', handleUnload);
+      // Save one final time when component unmounts
+      if (!preventAutoSaveRef.current) saveDraft();
+    };
+  }, [formData, selectedParts, searchTerm, showPartSelector]);
+
+  // Save draft when form data changes (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (formData.customer_name || formData.vehicle_no || selectedParts.length > 0) {
+        saveDraft();
+      }
+    }, 2000); // Wait 2 seconds after last change
+
+    return () => clearTimeout(timeoutId);
+  }, [formData, selectedParts]);
+
+  // Fetch vehicle invoice history when vehicle number changes (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (formData.vehicle_no) {
+        // Fetch regardless of job_no - we want to show history for any vehicle number
+        fetchVehicleInvoiceHistory(formData.vehicle_no);
+      } else {
+        // Clear history if vehicle number is empty
+        setVehicleInvoiceHistory([]);
+      }
+    }, 500); // Wait 500ms after user stops typing
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.vehicle_no, formData.job_no]);
 
   const generateTempInvoiceNo = async () => {
     try {
+      // First check if there are estimates without invoices (should reuse those numbers)
+      const estimateWithoutInvoice = await window.electronAPI.database.query(
+        'get',
+        `SELECT e.invoice_no, e.job_no 
+         FROM estimates e 
+         LEFT JOIN invoices i ON e.job_no = i.job_no 
+         WHERE i.job_no IS NULL 
+         ORDER BY e.created_at ASC 
+         LIMIT 1`
+      );
+      
+      if (estimateWithoutInvoice) {
+        // Verify that the job card still exists before using it
+        const jobExists = await window.electronAPI.database.query(
+          'get',
+          `SELECT * FROM job_cards WHERE job_no = ?`,
+          [estimateWithoutInvoice.job_no]
+        );
+        
+        if (jobExists) {
+          // Job card exists - suggest reusing that number and auto-select job
+          setFormData(prev => ({ 
+            ...prev, 
+            inv_no: estimateWithoutInvoice.invoice_no,
+            job_no: estimateWithoutInvoice.job_no,
+            vehicle_no: jobExists.vehicle_no,
+            customer_name: jobExists.customer_name,
+            advance_paid: jobExists.advance || 0,
+            date: jobExists.job_date || new Date().toISOString().split('T')[0]
+          }));
+          return;
+        } else {
+          // Job card doesn't exist anymore - clean up the orphaned estimate
+          // First get the estimate ID to delete its items
+          const estimateToDelete = await window.electronAPI.database.query(
+            'get',
+            `SELECT id FROM estimates WHERE job_no = ?`,
+            [estimateWithoutInvoice.job_no]
+          );
+          
+          if (estimateToDelete) {
+            // Delete estimate items first
+            await window.electronAPI.database.query(
+              'run',
+              `DELETE FROM estimate_items WHERE estimate_id = ?`,
+              [estimateToDelete.id]
+            );
+            
+            // Then delete the estimate
+            await window.electronAPI.database.query(
+              'run',
+              `DELETE FROM estimates WHERE id = ?`,
+              [estimateToDelete.id]
+            );
+          }
+        }
+      }
+
+      // No valid pending estimates, generate next available number
       const result = await window.electronAPI.database.query(
         'get',
         `SELECT current_value FROM counters WHERE id = 'invoice_no'`
@@ -65,6 +331,21 @@ const Invoice = () => {
 
   const generateActualInvoiceNo = async () => {
     try {
+      // Check if we're reusing an existing estimate's invoice number
+      if (formData.job_no) {
+        const existingEstimate = await window.electronAPI.database.query(
+          'get',
+          `SELECT invoice_no FROM estimates WHERE job_no = ?`,
+          [formData.job_no]
+        );
+        
+        if (existingEstimate && existingEstimate.invoice_no) {
+          // Reuse existing estimate's invoice number - don't increment counter
+          return existingEstimate.invoice_no;
+        }
+      }
+
+      // Generate new invoice number and increment counter
       const result = await window.electronAPI.database.query(
         'get',
         `SELECT current_value FROM counters WHERE id = 'invoice_no'`
@@ -108,9 +389,14 @@ const Invoice = () => {
     try {
       const result = await window.electronAPI.database.query(
         'all',
-        `SELECT job_no, customer_name, vehicle_no, advance 
-         FROM job_cards 
-         ORDER BY created_at DESC`
+        `SELECT jc.job_no, jc.customer_name, jc.vehicle_no, jc.advance, jc.created_at,
+                jc.id_no, jc.address, jc.mob_no, jc.tel_no, jc.email, jc.job_date,
+                jc.make, jc.model, jc.color, jc.insurance_company, jc.status, jc.id,
+                i.inv_no as existing_invoice_no
+         FROM job_cards jc 
+         LEFT JOIN invoices i ON jc.job_no = i.job_no
+         WHERE jc.status = 'completed'
+         ORDER BY jc.created_at DESC`
       );
       setJobNumbers(result || []);
     } catch (error) {
@@ -118,16 +404,249 @@ const Invoice = () => {
     }
   };
 
-  const handleJobSelect = (jobNo) => {
-    const selectedJob = jobNumbers.find(job => job.job_no === jobNo);
-    if (selectedJob) {
+  const fetchVehicleInvoiceHistory = async (vehicleNo) => {
+    if (!vehicleNo) {
+      setVehicleInvoiceHistory([]);
+      return;
+    }
+
+    try {
+      // Clean the vehicle number (trim whitespace and normalize case)
+      const cleanVehicleNo = vehicleNo.trim();
+      
+      // Create normalized version without special characters for fuzzy matching
+      const normalizedVehicleNo = cleanVehicleNo.replace(/[-\s]/g, '').toUpperCase();
+      
+      // First try exact match
+      let result = await window.electronAPI.database.query(
+        'all',
+        `SELECT i.inv_no, i.invoice_date, i.vehicle_no, i.balance_due 
+         FROM invoices i 
+         WHERE TRIM(i.vehicle_no) = ? 
+         ORDER BY i.invoice_date DESC, i.created_at DESC`,
+        [cleanVehicleNo]
+      );
+
+      // If no exact match, try case-insensitive search
+      if (!result || result.length === 0) {
+        result = await window.electronAPI.database.query(
+          'all',
+          `SELECT i.inv_no, i.invoice_date, i.vehicle_no, i.balance_due 
+           FROM invoices i 
+           WHERE UPPER(TRIM(i.vehicle_no)) = UPPER(?) 
+           ORDER BY i.invoice_date DESC, i.created_at DESC`,
+          [cleanVehicleNo]
+        );
+      }
+
+      // If still no results, try normalized match (remove dashes and spaces)
+      if (!result || result.length === 0) {
+        result = await window.electronAPI.database.query(
+          'all',
+          `SELECT i.inv_no, i.invoice_date, i.vehicle_no, i.balance_due 
+           FROM invoices i 
+           WHERE UPPER(REPLACE(REPLACE(TRIM(i.vehicle_no), '-', ''), ' ', '')) = ? 
+           ORDER BY i.invoice_date DESC, i.created_at DESC`,
+          [normalizedVehicleNo]
+        );
+      }
+
+      // If still no results, try partial match
+      if (!result || result.length === 0) {
+        result = await window.electronAPI.database.query(
+          'all',
+          `SELECT i.inv_no, i.invoice_date, i.vehicle_no, i.balance_due 
+           FROM invoices i 
+           WHERE UPPER(TRIM(i.vehicle_no)) LIKE UPPER(?) 
+           ORDER BY i.invoice_date DESC, i.created_at DESC`,
+          [`%${cleanVehicleNo}%`]
+        );
+      }
+
+      // If still no results, try to find invoices by job card vehicle number (exact)
+      if (!result || result.length === 0) {
+        result = await window.electronAPI.database.query(
+          'all',
+          `SELECT i.inv_no, i.invoice_date, i.vehicle_no, i.balance_due 
+           FROM invoices i 
+           JOIN job_cards jc ON i.job_no = jc.job_no
+           WHERE UPPER(TRIM(jc.vehicle_no)) = UPPER(?) 
+           ORDER BY i.invoice_date DESC, i.created_at DESC`,
+          [cleanVehicleNo]
+        );
+      }
+
+      // If still no results, try job card vehicle number with normalization
+      if (!result || result.length === 0) {
+        result = await window.electronAPI.database.query(
+          'all',
+          `SELECT i.inv_no, i.invoice_date, i.vehicle_no, i.balance_due 
+           FROM invoices i 
+           JOIN job_cards jc ON i.job_no = jc.job_no
+           WHERE UPPER(REPLACE(REPLACE(TRIM(jc.vehicle_no), '-', ''), ' ', '')) = ? 
+           ORDER BY i.invoice_date DESC, i.created_at DESC`,
+          [normalizedVehicleNo]
+        );
+      }
+
+      
+      setVehicleInvoiceHistory(result || []);
+    } catch (error) {
+      console.error('Error fetching vehicle invoice history:', error);
+      setVehicleInvoiceHistory([]);
+    }
+  };
+
+  const handleJobSelect = async (jobNo) => {
+    if (!jobNo) return;
+    
+    // Find selected job from the loaded list first
+    let selectedJob = jobNumbers.find(job => job.job_no === jobNo);
+    
+    // If not found in the loaded list, fetch directly from database
+    if (!selectedJob) {
+      try {
+        selectedJob = await window.electronAPI.database.query(
+          'get',
+          `SELECT jc.job_no, jc.customer_name, jc.vehicle_no, jc.advance, jc.created_at,
+                  jc.id_no, jc.address, jc.mob_no, jc.tel_no, jc.email, jc.job_date,
+                  jc.make, jc.model, jc.color, jc.insurance_company, jc.status, jc.id,
+                  i.inv_no as existing_invoice_no
+           FROM job_cards jc 
+           LEFT JOIN invoices i ON jc.job_no = i.job_no
+           WHERE jc.job_no = ? AND jc.status = 'completed'`,
+          [jobNo]
+        );
+      } catch (error) {
+        console.error('Error fetching job details:', error);
+        window.electronAPI.notification.show('Error', 'Failed to load job details');
+        return;
+      }
+    }
+    
+    if (!selectedJob) {
+      window.electronAPI.notification.show('Error', 'Job card not found or not completed');
+      return;
+    }
+    
+    // Check if this job already has an invoice
+    if (selectedJob.existing_invoice_no) {
+      // Load existing invoice data in read-only mode
+      await loadExistingInvoice(jobNo);
+      return;
+    }
+    
+    try {
+      // Load job card parts from the job_card_parts table
+      const jobParts = await window.electronAPI.database.query(
+        'all',
+        `SELECT jp.*, p.name, p.part_number, p.pro_no, p.final_selling_price 
+         FROM job_card_parts jp
+         JOIN parts p ON jp.part_id = p.id
+         WHERE jp.job_card_id = ?`,
+        [selectedJob.id]
+      );
+      
+      // Convert job parts to invoice parts format
+      const invoiceParts = jobParts.map(jp => ({
+        id: jp.part_id,
+        part_id: jp.part_id,
+        code: jp.pro_no || jp.part_number,
+        description: jp.name,
+        quantity: jp.quantity_used || jp.quantity,
+        unit_price: jp.unit_price,
+        selling_price: jp.unit_price * (jp.quantity_used || jp.quantity),
+        discount: 0,
+        amount: jp.unit_price * (jp.quantity_used || jp.quantity)
+      }));
+      
+      // Check if there's an existing estimate for this job number
+      const existingEstimate = await window.electronAPI.database.query(
+        'get',
+        `SELECT invoice_no FROM estimates WHERE job_no = ?`,
+        [jobNo]
+      );
+      
+      let invoiceNo;
+      if (existingEstimate && existingEstimate.invoice_no) {
+        // Use existing estimate's invoice number
+        invoiceNo = existingEstimate.invoice_no;
+      } else {
+        // Generate new temp invoice number
+        const result = await window.electronAPI.database.query(
+          'get',
+          `SELECT current_value FROM counters WHERE id = 'invoice_no'`
+        );
+        let nextValue = result && result.current_value !== undefined ? result.current_value + 1 : 1;
+        invoiceNo = `INV${nextValue.toString().padStart(6, '0')}`;
+      }
+      
+      // Auto-fill all the job details and parts
       setFormData(prev => ({
         ...prev,
         job_no: selectedJob.job_no,
         vehicle_no: selectedJob.vehicle_no,
         customer_name: selectedJob.customer_name,
-        advance_paid: selectedJob.advance || 0
+        advance_paid: selectedJob.advance || 0,
+        date: selectedJob.job_date || new Date().toISOString().split('T')[0],
+        inv_no: invoiceNo
       }));
+      
+      // Load the job card parts into selected parts
+      setSelectedParts(invoiceParts);
+      setIsReadOnly(false); // Allow users to still add manual parts and edit if needed
+      
+      // Fetch invoice history for this vehicle
+      await fetchVehicleInvoiceHistory(selectedJob.vehicle_no);
+      
+      window.electronAPI.notification.show('Success', `Job details and parts loaded for ${jobNo}`);
+      
+    } catch (error) {
+      console.error('Error loading job card parts:', error);
+      window.electronAPI.notification.show('Error', 'Failed to load job card details');
+    }
+  };
+
+  const loadExistingInvoice = async (jobNo) => {
+    try {
+      // Load existing invoice data
+      const invoice = await window.electronAPI.database.query(
+        'get',
+        `SELECT * FROM invoices WHERE job_no = ?`,
+        [jobNo]
+      );
+      
+      if (invoice) {
+        // Load invoice items
+        const invoiceItems = await window.electronAPI.database.query(
+          'all',
+          `SELECT * FROM invoice_items WHERE invoice_id = ?`,
+          [invoice.id]
+        );
+        
+        setFormData({
+          inv_no: invoice.inv_no,
+          customer_name: invoice.customer_name,
+          date: invoice.invoice_date,
+          job_no: invoice.job_no,
+          vehicle_no: invoice.vehicle_no,
+          items: invoiceItems || [],
+          customer_total_outstanding: invoice.total_amount || 0,
+          advance_paid: invoice.advance_paid || 0,
+          balance_due: invoice.balance_due || 0
+        });
+        
+        setSelectedParts(invoiceItems || []);
+        setIsReadOnly(true);
+        
+        // Fetch invoice history for this vehicle
+        await fetchVehicleInvoiceHistory(invoice.vehicle_no);
+        
+        window.electronAPI.notification.show('Info', 'Showing existing invoice in read-only mode');
+      }
+    } catch (error) {
+      console.error('Error loading existing invoice:', error);
+      window.electronAPI.notification.show('Error', 'Failed to load existing invoice');
     }
   };
 
@@ -141,6 +660,7 @@ const Invoice = () => {
     } else {
       setSelectedParts([...selectedParts, {
         ...part,
+        part_id: part.id, // Explicitly set part_id for stock reduction
         code: part.pro_no || part.part_number,
         description: part.name,
         quantity: 1,
@@ -274,11 +794,11 @@ const Invoice = () => {
                 <tr key={part.id}>
                   <td>{part.part_no}</td>
                   <td>{part.description}</td>
-                  <td style={{ textAlign: 'center' }}>${part.selling_price.toFixed(2)}</td>
+                  <td style={{ textAlign: 'center' }}>Rs. {part.selling_price.toFixed(2)}</td>
                   <td style={{ textAlign: 'center' }}>{part.quantity}</td>
-                  <td style={{ textAlign: 'right' }}>${(part.selling_price * part.quantity).toFixed(2)}</td>
-                  <td style={{ textAlign: 'right' }}>${(part.discount * part.quantity).toFixed(2)}</td>
-                  <td style={{ textAlign: 'right' }}>${part.amount.toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }}>Rs. {(part.selling_price * part.quantity).toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }}>Rs. {(part.discount * part.quantity).toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }}>Rs. {part.amount.toFixed(2)}</td>
                 </tr>
               ))}
               {Array.from({ length: Math.max(0, 8 - selectedParts.length) }).map((_, index) => (
@@ -300,15 +820,15 @@ const Invoice = () => {
             <div style={{ border: '1px solid black', padding: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '4px', borderBottom: '1px solid black' }}>
                 <span>Invoice Value</span>
-                <span>${calculateSubTotal().toFixed(2)}</span>
+                <span>Rs. {calculateSubTotal().toFixed(2)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px', paddingBottom: '4px', borderBottom: '1px solid black' }}>
                 <span>Advance Paid</span>
-                <span>${formData.advance_paid.toFixed(2)}</span>
+                <span>Rs. {formData.advance_paid.toFixed(2)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px', fontWeight: 'bold' }}>
                 <span>Balance Amount</span>
-                <span>${(calculateGrandTotal() + formData.advance_paid).toFixed(2)}</span>
+                <span>Rs. {(calculateGrandTotal() + formData.advance_paid).toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -352,6 +872,11 @@ const Invoice = () => {
       return;
     }
 
+    if (!formData.job_no) {
+      window.electronAPI.notification.show('Error', 'Please select a job number');
+      return;
+    }
+
     if (selectedParts.length === 0) {
       window.electronAPI.notification.show('Error', 'Please add at least one part');
       return;
@@ -388,8 +913,9 @@ const Invoice = () => {
       );
 
       if (result && (result.lastInsertRowid || result.lastID)) {
-        // Save invoice items
+        // Save invoice items and handle stock appropriately
         for (const part of selectedParts) {
+          // Save invoice item
           await window.electronAPI.database.query(
             'run',
             `INSERT INTO invoice_items (
@@ -407,11 +933,50 @@ const Invoice = () => {
               part.amount
             ]
           );
+
+          // Handle stock reduction based on whether this is from a job card or manual invoice
+          if (part.part_id) {
+            if (formData.job_no) {
+              // This is from a completed job card - stock was already reduced when job was marked as completed
+              // Do NOT reduce stock again, just document it in the invoice
+              console.log(`Skipping stock reduction for part ${part.code} - already reduced during job completion`);
+            } else {
+              // This is a manual invoice - reduce stock now
+              await window.electronAPI.database.query(
+                'run',
+                `UPDATE parts 
+                 SET current_stock = current_stock - ?, 
+                     updated_at = datetime('now','localtime')
+                 WHERE id = ? AND current_stock >= ?`,
+                [part.quantity, part.part_id, part.quantity]
+              );
+
+              // Record stock movement (OUT)
+              await window.electronAPI.database.query(
+                'run',
+                `INSERT INTO stock_movements (
+                  part_id, movement_type, quantity, cost_price, selling_price, 
+                  final_selling_price, notes, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
+                [
+                  part.part_id,
+                  'OUT',
+                  part.quantity,
+                  part.unit_price,
+                  part.selling_price,
+                  part.selling_price - part.discount,
+                  `Manual Invoice ${actualInvoiceNo}`
+                ]
+              );
+            }
+          }
         }
 
         // Update the form data with the actual invoice number
         setFormData(prev => ({ ...prev, inv_no: actualInvoiceNo }));
 
+        // Clear draft after successful save
+        clearDraft();
         window.electronAPI.notification.show('Success', `Invoice ${actualInvoiceNo} saved successfully`);
         navigate('/invoices');
       }
@@ -741,7 +1306,53 @@ const Invoice = () => {
           </div>
 
           {/* Screen Title - Hidden in print */}
-          <h1 className="text-2xl font-bold text-white mb-6 print-hidden">INVOICE</h1>
+          <div className="flex justify-between items-center mb-6 print-hidden">
+            <div className="flex items-center gap-4">
+              <h1 className="text-2xl font-bold text-white">INVOICE</h1>
+              
+              {/* Draft Status Indicator */}
+              {hasDraft && (
+                <div className="flex items-center gap-2 bg-yellow-900/30 border border-yellow-600 rounded-lg px-3 py-2">
+                  <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                  <span className="text-yellow-400 text-sm font-medium">Draft Saved</span>
+                  <button
+                    onClick={clearDraft}
+                    className="text-yellow-400 hover:text-yellow-300 ml-2 text-xs underline"
+                    title="Clear draft"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3">
+              {isReadOnly && (
+                <button
+                  onClick={() => {
+                    setIsReadOnly(false);
+                    setFormData({
+                      inv_no: '',
+                      customer_name: '',
+                      date: new Date().toISOString().split('T')[0],
+                      job_no: '',
+                      vehicle_no: '',
+                      items: [],
+                      customer_total_outstanding: 0,
+                      advance_paid: 0,
+                      balance_due: 0
+                    });
+                    setSelectedParts([]);
+                    setVehicleInvoiceHistory([]);
+                    generateTempInvoiceNo();
+                  }}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                >
+                  <FiPlus />
+                  New Invoice
+                </button>
+              )}
+            </div>
+          </div>
           
           {/* Print Title - Only visible in print */}
           <div className="invoice-title hidden print:block">INVOICE</div>
@@ -765,6 +1376,19 @@ const Invoice = () => {
 
           {/* Screen Form - Hidden in print */}
           <div className="print-hidden">
+            {/* Read-only notification only for existing invoices */}
+            {isReadOnly && formData.job_no && (
+              <div className="mb-6 bg-blue-900/30 border border-blue-600 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <FiEye className="w-5 h-5 text-blue-400" />
+                  <div>
+                    <h3 className="text-blue-400 font-semibold">Viewing Existing Invoice</h3>
+                    <p className="text-blue-300 text-sm">This invoice has already been created and is displayed in read-only mode.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             <div className="grid grid-cols-4 gap-6 mb-6">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Inv No.</label>
@@ -786,9 +1410,19 @@ const Invoice = () => {
                   type="text"
                   value={formData.customer_name}
                   onChange={(e) => setFormData(prev => ({ ...prev, customer_name: e.target.value }))}
-                  className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  readOnly={isReadOnly || !!formData.job_no}
+                  className={`w-full border rounded px-3 py-2 text-sm ${
+                    isReadOnly || formData.job_no 
+                      ? 'bg-gray-600 border-gray-500 text-gray-300 cursor-not-allowed' 
+                      : 'bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                  }`}
                   placeholder="Enter customer name"
                 />
+                {formData.job_no && (
+                  <div className="mt-1 text-xs text-blue-400">
+                    Auto-filled from Job Card
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Date</label>
@@ -796,7 +1430,12 @@ const Invoice = () => {
                   type="date"
                   value={formData.date}
                   onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                  className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  readOnly={isReadOnly}
+                  className={`w-full border rounded px-3 py-2 text-sm ${
+                    isReadOnly 
+                      ? 'bg-gray-600 border-gray-500 text-gray-300 cursor-not-allowed' 
+                      : 'bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                  }`}
                 />
               </div>
               <div>
@@ -812,28 +1451,132 @@ const Invoice = () => {
             <div className="grid grid-cols-2 gap-6 mb-6">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Job No.</label>
-                <select
-                  value={formData.job_no}
-                  onChange={(e) => handleJobSelect(e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Select Job No</option>
-                  {jobNumbers.map(job => (
-                    <option key={job.job_no} value={job.job_no}>
-                      {job.job_no}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative job-dropdown-container">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={jobNoSearch}
+                      onChange={(e) => {
+                        setJobNoSearch(e.target.value);
+                        setShowJobDropdown(true);
+                      }}
+                      onFocus={() => setShowJobDropdown(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setShowJobDropdown(false);
+                        }
+                      }}
+                      placeholder="Search or select completed job..."
+                      disabled={isReadOnly}
+                      className={`flex-1 border rounded px-3 py-2 text-sm ${
+                        isReadOnly 
+                          ? 'bg-gray-600 border-gray-500 text-gray-300 cursor-not-allowed' 
+                          : 'bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400'
+                      }`}
+                    />
+                    {formData.job_no && !isReadOnly && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => ({
+                            ...prev,
+                            job_no: '',
+                            vehicle_no: '',
+                            customer_name: '',
+                            advance_paid: 0
+                          }));
+                          setJobNoSearch('');
+                          setIsReadOnly(false);
+                          setShowJobDropdown(false);
+                          setSelectedParts([]);
+                          setVehicleInvoiceHistory([]);
+                          generateTempInvoiceNo();
+                        }}
+                        className="px-3 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition-colors"
+                        title="Clear selection"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  
+                  {showJobDropdown && !isReadOnly && (
+                    <div className="absolute z-50 w-full bg-gray-700 border border-gray-600 rounded-lg mt-1 max-h-60 overflow-y-auto shadow-lg">
+                      {jobNumbers
+                        .filter(job => 
+                          job.job_no.toLowerCase().includes(jobNoSearch.toLowerCase()) ||
+                          job.customer_name.toLowerCase().includes(jobNoSearch.toLowerCase()) ||
+                          job.vehicle_no.toLowerCase().includes(jobNoSearch.toLowerCase())
+                        )
+                        .map(job => (
+                          <div
+                            key={job.job_no}
+                            onClick={() => {
+                              setJobNoSearch(job.job_no);
+                              setShowJobDropdown(false);
+                              handleJobSelect(job.job_no);
+                            }}
+                            className="px-3 py-2 hover:bg-gray-600 cursor-pointer border-b border-gray-600 last:border-b-0"
+                          >
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <div className="text-white font-medium">{job.job_no}</div>
+                                <div className="text-gray-400 text-sm">{job.customer_name} • {job.vehicle_no}</div>
+                              </div>
+                              {job.existing_invoice_no && (
+                                <span className="text-xs text-orange-400 bg-orange-900/30 px-2 py-1 rounded">
+                                  Already Invoiced
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      }
+                      {jobNumbers.filter(job => 
+                        job.job_no.toLowerCase().includes(jobNoSearch.toLowerCase()) ||
+                        job.customer_name.toLowerCase().includes(jobNoSearch.toLowerCase()) ||
+                        job.vehicle_no.toLowerCase().includes(jobNoSearch.toLowerCase())
+                      ).length === 0 && (
+                        <div className="px-3 py-2 text-gray-400 text-sm">
+                          No matching completed job cards found
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
+                {formData.job_no && (
+                  <div className="mt-1 flex items-center justify-between">
+                    <div className="text-xs text-blue-400">
+                      ✓ Selected: {formData.job_no}
+                    </div>
+                    {jobNumbers.find(job => job.job_no === formData.job_no)?.existing_invoice_no && (
+                      <div className="text-xs text-orange-400">
+                        View Mode - Already Invoiced
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Vehicle No.</label>
                 <input
                   type="text"
-                  value={formData.vehicle_no}
+                  value={formData.vehicle_no || ''}
                   onChange={(e) => setFormData(prev => ({ ...prev, vehicle_no: e.target.value }))}
-                  className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  readOnly={isReadOnly}
+                  className={`w-full border rounded px-3 py-2 text-sm ${
+                    isReadOnly 
+                      ? 'bg-gray-600 border-gray-500 text-gray-300 cursor-not-allowed' 
+                      : 'bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                  }`}
                   placeholder="Enter vehicle number"
                 />
+                {formData.job_no && (
+                  <div className="mt-1 text-xs text-blue-400">
+                    Auto-filled from Job Card (editable)
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -844,7 +1587,12 @@ const Invoice = () => {
             <h3 className="text-lg font-semibold text-white">Parts & Services</h3>
             <button
               onClick={() => setShowPartSelector(!showPartSelector)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              disabled={isReadOnly}
+              className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                isReadOnly 
+                  ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
             >
               <FiPlus />
               Add Part
@@ -879,7 +1627,7 @@ const Invoice = () => {
                         </p>
                       </div>
                       <p className="font-medium text-white">
-                        ${part.final_selling_price?.toFixed(2) || '0.00'}
+                        Rs. {part.final_selling_price?.toFixed(2) || '0.00'}
                       </p>
                     </div>
                   </div>
@@ -912,12 +1660,17 @@ const Invoice = () => {
                         min="1"
                         value={part.quantity}
                         onChange={(e) => handleQuantityChange(index, parseInt(e.target.value) || 0)}
-                        className="w-16 text-center bg-gray-700 border border-gray-600 text-white rounded px-2 py-1 font-medium text-sm"
+                        readOnly={isReadOnly}
+                        className={`w-16 text-center border rounded px-2 py-1 font-medium text-sm ${
+                          isReadOnly 
+                            ? 'bg-gray-600 border-gray-500 text-gray-300 cursor-not-allowed' 
+                            : 'bg-gray-700 border-gray-600 text-white'
+                        }`}
                         style={{ WebkitAppearance: 'textfield', MozAppearance: 'textfield' }}
                       />
                     </td>
                     <td className="border-r border-gray-700 px-3 py-2 text-center text-white">
-                      ${part.unit_price.toFixed(2)}
+                      Rs. {part.unit_price.toFixed(2)}
                     </td>
                     <td className="border-r border-gray-700 px-3 py-2 text-center">
                       <input
@@ -925,7 +1678,12 @@ const Invoice = () => {
                         step="0.01"
                         value={part.discount}
                         onChange={(e) => handlePriceChange(index, 'discount', e.target.value)}
-                        className="w-20 text-right bg-gray-700 border border-gray-600 text-white rounded px-2 py-1 font-medium text-sm"
+                        readOnly={isReadOnly}
+                        className={`w-20 text-right border rounded px-2 py-1 font-medium text-sm ${
+                          isReadOnly 
+                            ? 'bg-gray-600 border-gray-500 text-gray-300 cursor-not-allowed' 
+                            : 'bg-gray-700 border-gray-600 text-white'
+                        }`}
                         style={{ WebkitAppearance: 'textfield', MozAppearance: 'textfield' }}
                       />
                     </td>
@@ -935,12 +1693,17 @@ const Invoice = () => {
                         step="0.01"
                         value={part.selling_price}
                         onChange={(e) => handlePriceChange(index, 'selling_price', e.target.value)}
-                        className="w-20 text-right bg-gray-700 border border-gray-600 text-white rounded px-2 py-1 font-medium text-sm"
+                        readOnly={isReadOnly}
+                        className={`w-20 text-right border rounded px-2 py-1 font-medium text-sm ${
+                          isReadOnly 
+                            ? 'bg-gray-600 border-gray-500 text-gray-300 cursor-not-allowed' 
+                            : 'bg-gray-700 border-gray-600 text-white'
+                        }`}
                         style={{ WebkitAppearance: 'textfield', MozAppearance: 'textfield' }}
                       />
                     </td>
                     <td className="px-3 py-2 text-right text-white font-medium">
-                      ${(part.selling_price - part.discount).toFixed(2)}
+                      Rs. {(part.selling_price - part.discount).toFixed(2)}
                     </td>
                   </tr>
                 ))}
@@ -957,7 +1720,7 @@ const Invoice = () => {
                       <td className="border-r border-gray-700 px-3 py-2"></td>
                       <td className="border-r border-gray-700 px-3 py-2"></td>
                       <td className="px-3 py-2 text-right text-white font-semibold">
-                        ${calculateSubTotal().toFixed(2)}
+                        Rs. {calculateSubTotal().toFixed(2)}
                       </td>
                     </tr>
                     <tr className="border-t border-gray-700 bg-gray-750">
@@ -968,7 +1731,7 @@ const Invoice = () => {
                       <td className="border-r border-gray-700 px-3 py-2"></td>
                       <td className="border-r border-gray-700 px-3 py-2 text-white font-medium">Advance Paid:</td>
                       <td className="px-3 py-2 text-right text-white font-medium">
-                        ${formData.advance_paid.toFixed(2)}
+                        Rs. {formData.advance_paid.toFixed(2)}
                       </td>
                     </tr>
                     <tr className="border-t border-gray-700 bg-gray-750">
@@ -979,7 +1742,7 @@ const Invoice = () => {
                       <td className="border-r border-gray-700 px-3 py-2"></td>
                       <td className="border-r border-gray-700 px-3 py-2 text-white font-semibold">Balance Due:</td>
                       <td className="px-3 py-2 text-right text-white font-semibold">
-                        ${(calculateSubTotal() + formData.advance_paid).toFixed(2)}
+                        Rs. {(calculateSubTotal() + formData.advance_paid).toFixed(2)}
                       </td>
                     </tr>
                   </>
@@ -1001,6 +1764,49 @@ const Invoice = () => {
           </div>
         </div>
 
+        {/* Customer Total Outstanding Table - Hidden in print */}
+        <div className="mb-6 print-hidden">
+          <h3 className="text-lg font-semibold text-white mb-4">Customer Total Outstanding</h3>
+          <div className="border border-gray-600 rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-700">
+                <tr>
+                  <th className="border-r border-gray-600 px-3 py-3 text-left font-medium text-gray-200">Inv No</th>
+                  <th className="border-r border-gray-600 px-3 py-3 text-left font-medium text-gray-200">Date</th>
+                  <th className="border-r border-gray-600 px-3 py-3 text-left font-medium text-gray-200">Veh No</th>
+                  <th className="px-3 py-3 text-left font-medium text-gray-200">Bal Amt</th>
+                </tr>
+              </thead>
+              <tbody className="bg-gray-800">
+                {vehicleInvoiceHistory.length > 0 ? (
+                  vehicleInvoiceHistory.map((invoice, index) => (
+                    <tr key={index} className="border-t border-gray-700 hover:bg-gray-750">
+                      <td className="border-r border-gray-700 px-3 py-2 text-white text-sm">
+                        {invoice.inv_no}
+                      </td>
+                      <td className="border-r border-gray-700 px-3 py-2 text-white text-sm">
+                        {new Date(invoice.invoice_date).toLocaleDateString()}
+                      </td>
+                      <td className="border-r border-gray-700 px-3 py-2 text-white text-sm">
+                        {invoice.vehicle_no}
+                      </td>
+                      <td className="px-3 py-2 text-white text-sm text-right">
+                        Rs. {(invoice.balance_due || 0).toFixed(2)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr className="border-t border-gray-700">
+                    <td colSpan="4" className="px-3 py-4 text-center text-gray-400 text-sm">
+                      {formData.vehicle_no ? 'No previous invoices found for this vehicle' : 'Select a job to view vehicle invoice history'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         {/* Signature Section - Only visible in print */}
         <div className="hidden print:block signature-section">
           <div className="signature-box">
@@ -1017,14 +1823,50 @@ const Invoice = () => {
 
         {/* Action Buttons */}
         <div className="flex justify-end gap-4 pt-4 border-t border-gray-700 print:hidden">
-          <button
-            onClick={handleSave}
-            disabled={loading}
-            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
-          >
-            <FiSave />
-            {loading ? 'Saving...' : 'Save Invoice'}
-          </button>
+          {!isReadOnly ? (
+            <>
+              <button
+                onClick={handleCancel}
+                className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+              >
+                <FiX />
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={loading}
+                className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+              >
+                <FiSave />
+                {loading ? 'Saving...' : 'Save Invoice'}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => {
+                setIsReadOnly(false);
+                setFormData({
+                  inv_no: '',
+                  customer_name: '',
+                  date: new Date().toISOString().split('T')[0],
+                  job_no: '',
+                  vehicle_no: '',
+                  items: [],
+                  customer_total_outstanding: 0,
+                  advance_paid: 0,
+                  balance_due: 0
+                });
+                setSelectedParts([]);
+                setVehicleInvoiceHistory([]);
+                setJobNoSearch('');
+                generateTempInvoiceNo();
+              }}
+              className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+            >
+              <FiPlus />
+              New Invoice
+            </button>
+          )}
           <button
             onClick={handlePrintPreview}
             className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"

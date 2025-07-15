@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveJobCardImage: (imageData, jobNo) => {
     console.log('Calling save-job-card-image IPC', { jobNo });
     return ipcRenderer.invoke('save-job-card-image', { imageData, jobNo });
+  },
+  debug: {
+    getLogFilePath: () => ipcRenderer.invoke('get-log-file-path'),
+    openLogLocation: () => ipcRenderer.invoke('open-log-location'),
+    getDebugInfo: () => ipcRenderer.invoke('get-debug-info')
   }
 });
 

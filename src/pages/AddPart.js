@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiArrowLeft, FiSave, FiRefreshCw, FiCamera, FiX } from 'react-icons/fi';
 
@@ -11,6 +11,10 @@ const AddPart = () => {
   const [filteredParts, setFilteredParts] = useState([]);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [hasDraft, setHasDraft] = useState(false);
+  const [isDraftLoaded, setIsDraftLoaded] = useState(false);
+  const [preventAutoSave, setPreventAutoSave] = useState(false);
+  const preventAutoSaveRef = useRef(false);
   const [formData, setFormData] = useState({
     pro_no: '',
     part_number: '',
@@ -27,11 +31,153 @@ const AddPart = () => {
     photo: ''
   });
 
+  // Draft management functions
+  const saveDraft = () => {
+    if (preventAutoSaveRef.current) return; // Don't save if auto-save is prevented
+    
+    if (formData.part_number || formData.name || formData.cost_price || formData.selling_price || selectedPhoto) {
+      const draftData = {
+        formData,
+        photoPreview,
+        searchTerm,
+        timestamp: new Date().toISOString()
+      };
+      localStorage.setItem('addPartDraft', JSON.stringify(draftData));
+      setHasDraft(true);
+    }
+  };
+
+  const loadDraft = () => {
+    try {
+      const savedDraft = localStorage.getItem('addPartDraft');
+      if (savedDraft) {
+        const draftData = JSON.parse(savedDraft);
+        setFormData(draftData.formData);
+        setPhotoPreview(draftData.photoPreview || null);
+        setSearchTerm(draftData.searchTerm || '');
+        if (draftData.photoPreview) {
+          setFormData(prev => ({ ...prev, photo: draftData.photoPreview }));
+        }
+        setIsDraftLoaded(true);
+        setHasDraft(true);
+      }
+    } catch (error) {
+      console.error('Error loading draft:', error);
+    }
+  };
+
+  const clearDraft = () => {
+    localStorage.removeItem('addPartDraft');
+    setHasDraft(false);
+    setIsDraftLoaded(false);
+  };
+
+  const checkForDraft = () => {
+    const savedDraft = localStorage.getItem('addPartDraft');
+    setHasDraft(!!savedDraft);
+    return !!savedDraft;
+  };
+
+  const handleCancel = () => {
+    // Prevent auto-save during and after reset
+    setPreventAutoSave(true);
+    preventAutoSaveRef.current = true;
+    
+    // Clear the draft
+    clearDraft();
+    
+    // Reset form to initial state
+    setFormData({
+      pro_no: '',
+      part_number: '',
+      name: '',
+      description: '',
+      part_type: 'new',
+      cost_price: '',
+      selling_price: '',
+      final_selling_price: '',
+      low_stock_threshold: 10,
+      supplier: '',
+      location: '',
+      item_name: '',
+      photo: ''
+    });
+    
+    // Reset photo state
+    setSelectedPhoto(null);
+    setPhotoPreview(null);
+    
+    // Reset search
+    setSearchTerm('');
+    
+    // Clear file input
+    const fileInput = document.getElementById('photo-input');
+    if (fileInput) fileInput.value = '';
+    
+    // Re-enable auto-save after a short delay
+    setTimeout(() => {
+      setPreventAutoSave(false);
+      preventAutoSaveRef.current = false;
+    }, 1000);
+    
+    window.electronAPI.notification.show('Info', 'Form cleared and draft removed');
+  };
+
   // Fetch recent Pro Nos on component mount
   useEffect(() => {
     fetchRecentProNos();
     fetchRecentParts();
+    
+    // Check for existing draft on component mount
+    if (checkForDraft()) {
+      // Auto-load draft after a brief delay to let other initialization complete
+      setTimeout(() => {
+        loadDraft();
+      }, 100);
+    }
   }, []);
+
+  // Auto-save draft periodically and when user navigates away
+  useEffect(() => {
+    // Auto-save every 30 seconds if there's meaningful data
+    const autoSaveInterval = setInterval(() => {
+      if (formData.part_number || formData.name || formData.cost_price || formData.selling_price || selectedPhoto) {
+        saveDraft();
+      }
+    }, 30000);
+
+    // Save draft when user navigates away
+    const handleBeforeUnload = () => {
+      if (!preventAutoSaveRef.current) saveDraft();
+    };
+
+    // Save draft when component unmounts (navigation)
+    const handleUnload = () => {
+      if (!preventAutoSaveRef.current) saveDraft();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('unload', handleUnload);
+
+    return () => {
+      clearInterval(autoSaveInterval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('unload', handleUnload);
+      // Save one final time when component unmounts
+      if (!preventAutoSaveRef.current) saveDraft();
+    };
+  }, [formData, selectedPhoto, searchTerm]);
+
+  // Save draft when form data changes (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (formData.part_number || formData.name || formData.cost_price || formData.selling_price || selectedPhoto) {
+        saveDraft();
+      }
+    }, 2000); // Wait 2 seconds after last change
+
+    return () => clearTimeout(timeoutId);
+  }, [formData, selectedPhoto]);
 
   // Add search functionality
   useEffect(() => {
@@ -283,6 +429,8 @@ const AddPart = () => {
 
       console.log('Database insert result:', result);
       if (result && result.changes > 0) {
+        // Clear draft after successful save
+        clearDraft();
         window.electronAPI?.notification?.show('Success', 'Part added successfully') || alert('Part added successfully');
         await fetchRecentParts();
         navigate('/inventory');
@@ -344,7 +492,26 @@ const AddPart = () => {
         {/* Main Form */}
         <div className="col-span-9">
           <div className="bg-gray-800 rounded-lg shadow-lg p-6">
-            <h1 className="text-2xl font-bold text-white mb-6">Add New Part</h1>
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-4">
+                <h1 className="text-2xl font-bold text-white">Add New Part</h1>
+                
+                {/* Draft Status Indicator */}
+                {hasDraft && (
+                  <div className="flex items-center gap-2 bg-yellow-900/30 border border-yellow-600 rounded-lg px-3 py-2">
+                    <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                    <span className="text-yellow-400 text-sm font-medium">Draft Saved</span>
+                    <button
+                      onClick={clearDraft}
+                      className="text-yellow-400 hover:text-yellow-300 ml-2 text-xs underline"
+                      title="Clear draft"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
             
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -617,9 +784,9 @@ const AddPart = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate('/inventory')}
-                  className="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600 
-                           focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-800
+                  onClick={handleCancel}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 
+                           focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-800
                            transition-colors"
                 >
                   Cancel

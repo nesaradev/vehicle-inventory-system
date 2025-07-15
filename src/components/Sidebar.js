@@ -27,7 +27,7 @@ const Sidebar = () => {
   const { logout } = useAuth();
 
   const menuItems = [
-    { path: '/', icon: <FiHome className="w-5 h-5" />, label: 'Dashboard' },
+    { path: '/dashboard', icon: <FiHome className="w-5 h-5" />, label: 'Dashboard' },
     { path: '/inventory', icon: <FiPackage className="w-5 h-5" />, label: 'Inventory' },
     { path: '/add-part', icon: <FiPlusSquare className="w-5 h-5" />, label: 'Add Part' },
     { path: '/add-stock', icon: <FiLayers className="w-5 h-5" />, label: 'Add Stock' },

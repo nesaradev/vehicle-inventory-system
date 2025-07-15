@@ -1,6 +1,6 @@
 import React from 'react';
 
-const JobCardPrint = ({ jobData, selectedParts, calculateTotal }) => {
+const JobCardPrint = ({ jobData, selectedParts = [], calculateTotal }) => {
   return (
     <div style={{ 
       width: '210mm', 
@@ -239,7 +239,7 @@ const JobCardPrint = ({ jobData, selectedParts, calculateTotal }) => {
             fontSize: '9px',
             fontWeight: 'bold'
           }}>
-            {jobData.job_no || ''}
+            {jobData.model || ''}
           </div>
         </div>
 
@@ -358,7 +358,11 @@ const JobCardPrint = ({ jobData, selectedParts, calculateTotal }) => {
                 borderRight: '1px solid #000',
                 fontSize: '8px'
               }}>
-                {part ? `${part.name} (${part.part_number})` : ''}
+                {part ? (
+                  part.source_type === 'estimate' 
+                    ? `${part.type || ''} - ${part.description || ''}` 
+                    : `${part.part_name || part.description || part.name || ''} ${part.part_number ? `(${part.part_number})` : ''}`
+                ) : ''}
               </div>
               <div style={{ 
                 flex: 1,
@@ -366,7 +370,11 @@ const JobCardPrint = ({ jobData, selectedParts, calculateTotal }) => {
                 textAlign: 'right',
                 fontSize: '8px'
               }}>
-                {part ? `$${part.total_price?.toFixed(2) || '0.00'}` : ''}
+                {part ? (
+                  part.source_type === 'estimate' 
+                    ? part.quantity || '' 
+                    : `Rs. ${(part.amount || part.total_price || 0).toFixed(2)}`
+                ) : ''}
               </div>
             </div>
           );
@@ -395,7 +403,7 @@ const JobCardPrint = ({ jobData, selectedParts, calculateTotal }) => {
             fontWeight: 'bold',
             fontSize: '9px'
           }}>
-            ${calculateTotal ? calculateTotal().toFixed(2) : '0.00'}
+            Rs. {selectedParts && selectedParts.length > 0 ? selectedParts.reduce((sum, part) => sum + (part.amount || part.total_price || 0), 0).toFixed(2) : '0.00'}
           </div>
         </div>
 

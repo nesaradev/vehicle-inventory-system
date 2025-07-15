@@ -7,13 +7,18 @@ import JobCardPrint from '../components/JobCardPrint';
 const AddJobCard = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [parts, setParts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showPartSelector, setShowPartSelector] = useState(false);
   const [isNewCustomer, setIsNewCustomer] = useState(false);
   const [recentJobNos, setRecentJobNos] = useState([]);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [printLoading, setPrintLoading] = useState(false);
+  const [existingJobCards, setExistingJobCards] = useState([]);
+  const [isEditingExisting, setIsEditingExisting] = useState(false);
+  const [jobNoInputValue, setJobNoInputValue] = useState('');
+  const [showJobNoDropdown, setShowJobNoDropdown] = useState(false);
+  const [jobValidationMessage, setJobValidationMessage] = useState('');
+  const [preventAutoSave, setPreventAutoSave] = useState(false);
+  const preventAutoSaveRef = useRef(false);
   const printRef = useRef(null);
 
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }));
@@ -52,11 +57,216 @@ const AddJobCard = () => {
     service_advisor: ''
   });
 
-  const [selectedParts, setSelectedParts] = useState([]);
+  const [hasDraft, setHasDraft] = useState(false);
+  const [isDraftLoaded, setIsDraftLoaded] = useState(false);
+
+  // Draft management functions
+  const saveDraft = () => {
+    if (preventAutoSaveRef.current) return; // Don't save if auto-save is prevented
+    
+    if (formData.customer_name || formData.vehicle_no) {
+      const draftData = {
+        formData,
+        timestamp: new Date().toISOString()
+      };
+      localStorage.setItem('jobCardDraft', JSON.stringify(draftData));
+      setHasDraft(true);
+    }
+  };
+
+  const loadDraft = () => {
+    try {
+      const savedDraft = localStorage.getItem('jobCardDraft');
+      if (savedDraft) {
+        const draftData = JSON.parse(savedDraft);
+        // Update time to current time but keep other data
+        const updatedFormData = {
+          ...draftData.formData,
+          in_time: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+          job_date: new Date().toISOString().split('T')[0] // Update to current date
+        };
+        setFormData(updatedFormData);
+        // Also update the job number input value to show the job number
+        setJobNoInputValue(updatedFormData.job_no || '');
+        setIsDraftLoaded(true);
+        setHasDraft(true);
+      }
+    } catch (error) {
+      console.error('Error loading draft:', error);
+    }
+  };
+
+  const clearDraft = () => {
+    localStorage.removeItem('jobCardDraft');
+    setHasDraft(false);
+    setIsDraftLoaded(false);
+  };
+
+  const handleCancel = () => {
+    // Prevent auto-save during and after reset
+    setPreventAutoSave(true);
+    preventAutoSaveRef.current = true;
+    
+    // Clear the draft
+    clearDraft();
+    
+    // Reset form to initial state
+    setFormData({
+      // Job Details
+      job_no: '',
+      job_date: new Date().toISOString().split('T')[0],
+      in_time: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+      
+      // Vehicle Details
+      vehicle_no: '',
+      type: 'CAR',
+      make: 'AUDI',
+      model: 'A5',
+      color: '',
+      engine_no: '',
+      chassis_no: '',
+      man_year: '',
+      in_milage: '',
+      insurance_company: '',
+      claim_no: '',
+      date_of_accident: new Date().toISOString().split('T')[0],
+      advance: 0,
+
+      // Customer Details
+      customer_name: '',
+      id_no: '',
+      address: '',
+      mob_no: '',
+      tel_no: '',
+      fax_no: '',
+      email: '',
+      vat_no: '',
+      technician: '',
+      service_advisor: ''
+    });
+    
+    
+    // Reset other state
+    setIsNewCustomer(false);
+    
+    // Re-enable auto-save after a short delay
+    setTimeout(() => {
+      setPreventAutoSave(false);
+      preventAutoSaveRef.current = false;
+    }, 1000);
+    
+    window.electronAPI.notification.show('Info', 'Form cleared and draft removed');
+  };
+
+  const checkForDraft = () => {
+    const savedDraft = localStorage.getItem('jobCardDraft');
+    setHasDraft(!!savedDraft);
+    return !!savedDraft;
+  };
+
+  const fetchExistingJobCards = async () => {
+    try {
+      const result = await window.electronAPI.database.query(
+        'all',
+        'SELECT job_no, customer_name, vehicle_no FROM job_cards ORDER BY created_at DESC LIMIT 50'
+      );
+      setExistingJobCards(result || []);
+    } catch (error) {
+      console.error('Error fetching existing job cards:', error);
+    }
+  };
+
+  const handleJobNoInputChange = (value) => {
+    setJobNoInputValue(value);
+    setJobValidationMessage('');
+    
+    if (value.trim() === '') {
+      setShowJobNoDropdown(false);
+      setFormData(prev => ({ ...prev, job_no: '' }));
+      setIsEditingExisting(false);
+      return;
+    }
+
+    // Check if the entered value matches any existing job card
+    const matchingJob = existingJobCards.find(job => 
+      job.job_no.toLowerCase().includes(value.toLowerCase())
+    );
+
+    if (matchingJob && value === matchingJob.job_no) {
+      // Exact match found - load existing job card
+      loadExistingJobCard(matchingJob.job_no);
+    } else if (value.length > 0) {
+      // Show dropdown with filtered results
+      const filteredJobs = existingJobCards.filter(job => 
+        job.job_no.toLowerCase().includes(value.toLowerCase())
+      );
+      
+      if (filteredJobs.length > 0) {
+        setShowJobNoDropdown(true);
+      } else {
+        setShowJobNoDropdown(false);
+        setJobValidationMessage('No matching job cards found');
+        setFormData(prev => ({ ...prev, job_no: '' }));
+        setIsEditingExisting(false);
+      }
+    }
+  };
+
+  const loadExistingJobCard = async (jobNo) => {
+    try {
+      const result = await window.electronAPI.database.query(
+        'get',
+        `SELECT * FROM job_cards WHERE job_no = ?`,
+        [jobNo]
+      );
+      
+      if (result) {
+        // Load job card data
+        setFormData({
+          ...result,
+          job_date: result.job_date,
+          in_time: result.in_time
+        });
+        
+        // Load job card parts
+        const partsResult = await window.electronAPI.database.query(
+          'all',
+          `SELECT jcp.*, p.name, p.pro_no 
+           FROM job_card_parts jcp 
+           JOIN parts p ON jcp.part_id = p.id 
+           WHERE jcp.job_card_id = ?`,
+          [result.id]
+        );
+        
+        setSelectedParts(partsResult || []);
+        setIsEditingExisting(true);
+        setShowJobNoDropdown(false);
+        setJobValidationMessage('');
+        
+        window.electronAPI.notification.show('Info', 'Loaded existing job card for editing');
+      }
+    } catch (error) {
+      console.error('Error loading existing job card:', error);
+      window.electronAPI.notification.show('Error', 'Failed to load job card');
+    }
+  };
+
+  const selectJobFromDropdown = (jobNo) => {
+    setJobNoInputValue(jobNo);
+    loadExistingJobCard(jobNo);
+  };
 
   useEffect(() => {
-    fetchParts();
     fetchRecentJobNos();
+    fetchExistingJobCards();
+    
+    // Check for existing draft on component mount
+    if (checkForDraft()) {
+      // Auto-load draft after a brief delay to let other initialization complete
+      setTimeout(() => {
+        loadDraft();
+      }, 100);
+    }
   }, []);
 
   // Update time every minute
@@ -105,17 +315,48 @@ const AddJobCard = () => {
     };
   }, []);
 
-  const fetchParts = async () => {
-    try {
-      const result = await window.electronAPI.database.query(
-        'all',
-        'SELECT * FROM parts WHERE current_stock > 0 ORDER BY name'
-      );
-      setParts(result || []);
-    } catch (error) {
-      console.error('Error fetching parts:', error);
-    }
-  };
+  // Auto-save draft periodically and when user navigates away
+  useEffect(() => {
+    // Auto-save every 30 seconds if there's meaningful data
+    const autoSaveInterval = setInterval(() => {
+      if (formData.customer_name || formData.vehicle_no) {
+        saveDraft();
+      }
+    }, 30000);
+
+    // Save draft when user navigates away
+    const handleBeforeUnload = () => {
+      if (!preventAutoSaveRef.current) saveDraft();
+    };
+
+    // Save draft when component unmounts (navigation)
+    const handleUnload = () => {
+      if (!preventAutoSaveRef.current) saveDraft();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('unload', handleUnload);
+
+    return () => {
+      clearInterval(autoSaveInterval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('unload', handleUnload);
+      // Save one final time when component unmounts
+      if (!preventAutoSaveRef.current) saveDraft();
+    };
+  }, [formData]);
+
+  // Save draft when formData or selectedParts change (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (formData.customer_name || formData.vehicle_no) {
+        saveDraft();
+      }
+    }, 2000); // Wait 2 seconds after last change
+
+    return () => clearTimeout(timeoutId);
+  }, [formData]);
+
 
   const fetchRecentJobNos = async () => {
     try {
@@ -163,6 +404,10 @@ const AddJobCard = () => {
       // Format with leading zeros (6 digits)
       const jobNo = nextValue.toString().padStart(6, '0');
       setFormData(prev => ({ ...prev, job_no: jobNo }));
+      setJobNoInputValue(jobNo);
+      setIsEditingExisting(false);
+      setShowJobNoDropdown(false);
+      setJobValidationMessage('');
       await fetchRecentJobNos();
     } catch (error) {
       console.error('Error generating Job No:', error);
@@ -175,47 +420,6 @@ const AddJobCard = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleAddPart = (part) => {
-    const existingIndex = selectedParts.findIndex(p => p.id === part.id);
-    if (existingIndex >= 0) {
-      // Update quantity if part already selected
-      const updated = [...selectedParts];
-      updated[existingIndex].quantity++;
-      updated[existingIndex].total_price = updated[existingIndex].quantity * updated[existingIndex].unit_price;
-      setSelectedParts(updated);
-    } else {
-      // Add new part
-      setSelectedParts([...selectedParts, {
-        ...part,
-        quantity: 1,
-        unit_price: part.final_selling_price,
-        total_price: part.final_selling_price
-      }]);
-    }
-    setShowPartSelector(false);
-    setSearchTerm('');
-  };
-
-  const handleQuantityChange = (index, quantity) => {
-    const updated = [...selectedParts];
-    const maxQuantity = parts.find(p => p.id === updated[index].id)?.current_stock || 0;
-    
-    if (quantity <= 0) {
-      updated.splice(index, 1);
-    } else if (quantity <= maxQuantity) {
-      updated[index].quantity = quantity;
-      updated[index].total_price = quantity * updated[index].unit_price;
-    } else {
-      window.electronAPI.notification.show('Warning', `Only ${maxQuantity} units available in stock`);
-      return;
-    }
-    
-    setSelectedParts(updated);
-  };
-
-  const calculateTotal = () => {
-    return selectedParts.reduce((sum, part) => sum + part.total_price, 0);
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -226,16 +430,62 @@ const AddJobCard = () => {
     
     setLoading(true);
     try {
-      const result = await window.electronAPI.database.query(
-        'run',
-        `INSERT INTO job_cards (
-          job_no, job_date, in_time, vehicle_no, vehicle_type,
-          make, model, color, engine_no, chassis_no,
-          man_year, in_milage, insurance_company, claim_no,
-          date_of_accident, advance, customer_type, customer_name,
-          id_no, address, mob_no, tel_no, fax_no,
-          email, vat_no, technician, service_advisor
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      let result;
+      
+      if (isEditingExisting) {
+        // Update existing job card
+        result = await window.electronAPI.database.query(
+          'run',
+          `UPDATE job_cards SET 
+            job_date = ?, in_time = ?, vehicle_no = ?, vehicle_type = ?,
+            make = ?, model = ?, color = ?, engine_no = ?, chassis_no = ?,
+            man_year = ?, in_milage = ?, insurance_company = ?, claim_no = ?,
+            date_of_accident = ?, advance = ?, customer_type = ?, customer_name = ?,
+            id_no = ?, address = ?, mob_no = ?, tel_no = ?, fax_no = ?,
+            email = ?, vat_no = ?, technician = ?, service_advisor = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE job_no = ?`,
+          [
+            formData.job_date,
+            formData.in_time,
+            formData.vehicle_no,
+            formData.type,
+            formData.make,
+            formData.model,
+            formData.color,
+            formData.engine_no,
+            formData.chassis_no,
+            formData.man_year,
+            formData.in_milage,
+            formData.insurance_company,
+            formData.claim_no,
+            formData.date_of_accident,
+            formData.advance,
+            isNewCustomer ? 'new' : 'existing',
+            formData.customer_name,
+            formData.id_no,
+            formData.address,
+            formData.mob_no,
+            formData.tel_no,
+            formData.fax_no,
+            formData.email,
+            formData.vat_no,
+            formData.technician,
+            formData.service_advisor,
+            formData.job_no
+          ]
+        );
+      } else {
+        // Create new job card
+        result = await window.electronAPI.database.query(
+          'run',
+          `INSERT INTO job_cards (
+            job_no, job_date, in_time, vehicle_no, vehicle_type,
+            make, model, color, engine_no, chassis_no,
+            man_year, in_milage, insurance_company, claim_no,
+            date_of_accident, advance, customer_type, customer_name,
+            id_no, address, mob_no, tel_no, fax_no,
+            email, vat_no, technician, service_advisor
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           formData.job_no,
           formData.job_date,
@@ -264,14 +514,23 @@ const AddJobCard = () => {
           formData.vat_no,
           formData.technician,
           formData.service_advisor
-        ]
-      );
+          ]
+        );
+      }
 
       if (result && result.changes > 0) {
-        window.electronAPI.notification.show('Success', 'Job card created successfully');
-        navigate('/job-cards');
+        // Clear draft after successful save
+        clearDraft();
+        const successMessage = isEditingExisting ? 'Job card updated successfully' : 'Job card created successfully';
+        window.electronAPI.notification.show('Success', successMessage);
+        
+        if (isEditingExisting) {
+          navigate('/job-cards');
+        } else {
+          navigate(`/add-estimate?jobNo=${formData.job_no}`);
+        }
       } else {
-        throw new Error('Failed to create job card');
+        throw new Error(isEditingExisting ? 'Failed to update job card' : 'Failed to create job card');
       }
     } catch (error) {
       console.error('Error creating job card:', error);
@@ -285,10 +544,6 @@ const AddJobCard = () => {
     }
   };
 
-  const filteredParts = parts.filter(part =>
-    part.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    part.part_number.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   const handlePrint = async () => {
     if (!formData.job_no) {
@@ -327,7 +582,34 @@ const AddJobCard = () => {
 
       <div className="bg-gray-800 rounded-lg shadow-lg p-6">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-white">Vehicle Registration</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold text-white">
+              {isEditingExisting ? 'Edit Job Card' : 'Vehicle Registration'}
+            </h1>
+            
+            {/* Draft Status Indicator */}
+            {hasDraft && (
+              <div className="flex items-center gap-2 bg-yellow-900/30 border border-yellow-600 rounded-lg px-3 py-2">
+                <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                <span className="text-yellow-400 text-sm font-medium">Draft Saved</span>
+                <button
+                  onClick={clearDraft}
+                  className="text-yellow-400 hover:text-yellow-300 ml-2 text-xs underline"
+                  title="Clear draft"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+            
+            {/* Editing Status Indicator */}
+            {isEditingExisting && (
+              <div className="flex items-center gap-2 bg-blue-900/30 border border-blue-600 rounded-lg px-3 py-2">
+                <FiSearch className="w-4 h-4 text-blue-400" />
+                <span className="text-blue-400 text-sm font-medium">Editing Existing Job Card</span>
+              </div>
+            )}
+          </div>
           
           {/* Recent Job Numbers */}
           <div className="bg-gray-700 rounded-lg p-4 min-w-[200px]">
@@ -349,17 +631,45 @@ const AddJobCard = () => {
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Job Details */}
           <div className="grid grid-cols-3 gap-4 p-4 bg-gray-700 rounded-lg">
-            <div>
+            <div className="relative">
               <label className="block text-sm font-medium text-gray-300 mb-2">Job No</label>
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  name="job_no"
-                  value={formData.job_no}
-                  readOnly
-                  placeholder="Click arrow to generate"
-                  className="bg-gray-900 text-white border border-gray-700 rounded-md px-3 py-2 w-full font-mono focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={jobNoInputValue}
+                    onChange={(e) => handleJobNoInputChange(e.target.value)}
+                    onFocus={() => setShowJobNoDropdown(existingJobCards.length > 0)}
+                    onBlur={() => setTimeout(() => setShowJobNoDropdown(false), 200)}
+                    placeholder="Enter job number or generate new"
+                    className="bg-gray-900 text-white border border-gray-700 rounded-md px-3 py-2 w-full font-mono focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  
+                  {/* Dropdown for existing job cards */}
+                  {showJobNoDropdown && (
+                    <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-600 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {existingJobCards
+                        .filter(job => job.job_no.toLowerCase().includes(jobNoInputValue.toLowerCase()))
+                        .map(job => (
+                          <div
+                            key={job.job_no}
+                            className="px-3 py-2 hover:bg-gray-700 cursor-pointer text-white text-sm"
+                            onClick={() => selectJobFromDropdown(job.job_no)}
+                          >
+                            <div className="font-mono font-semibold">{job.job_no}</div>
+                            <div className="text-gray-400 text-xs">{job.customer_name} • {job.vehicle_no}</div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                  
+                  {/* Validation message */}
+                  {jobValidationMessage && (
+                    <div className="absolute z-40 w-full mt-1 bg-red-900/30 border border-red-600 rounded-md p-2">
+                      <div className="text-red-400 text-xs">{jobValidationMessage}</div>
+                    </div>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={generateJobNo}
@@ -948,6 +1258,15 @@ const AddJobCard = () => {
           {/* Form Actions */}
           <div className="flex justify-end gap-4 pt-4">
             <button
+              type="button"
+              onClick={handleCancel}
+              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 
+                       focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-800
+                       transition-colors"
+            >
+              Cancel
+            </button>
+            <button
               type="submit"
               disabled={loading}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 
@@ -998,8 +1317,6 @@ const AddJobCard = () => {
             <div className="print-preview-content">
               <JobCardPrint 
                 jobData={formData} 
-                selectedParts={selectedParts} 
-                calculateTotal={calculateTotal} 
               />
             </div>
           </div>

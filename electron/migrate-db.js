@@ -52,6 +52,10 @@ async function migrateBetterSqlite3(db) {
   // Add service_advisor column to job_cards table
   safeAlterTableSync(db, 'job_cards', 'service_advisor TEXT');
   
+  // Add GRN tracking to stock movements
+  safeAlterTableSync(db, 'stock_movements', 'grn_documented BOOLEAN DEFAULT 0');
+  safeAlterTableSync(db, 'stock_movements', 'grn_no TEXT');
+  
   // Update existing timestamps to correct timezone
   try {
     const sampleRecord = db.prepare('SELECT created_at FROM parts LIMIT 1').get();
@@ -193,6 +197,10 @@ async function migrateSqliteWrapper(db) {
   // Add photo column to parts table
   await safeAlterTableAsync(db, 'parts', 'photo TEXT');
   
+  // Add GRN tracking to stock movements
+  await safeAlterTableAsync(db, 'stock_movements', 'grn_documented BOOLEAN DEFAULT 0');
+  await safeAlterTableAsync(db, 'stock_movements', 'grn_no TEXT');
+  
   // Add updated_at column to parts table
   await safeAlterTableAsync(db, 'parts', 'updated_at DATETIME DEFAULT (datetime(\'now\',\'localtime\'))');
   
@@ -324,6 +332,18 @@ async function migrateSqliteWrapper(db) {
 // Safe table alteration for better-sqlite3 (synchronous)
 function safeAlterTableSync(db, table, column) {
   try {
+    // Extract column name from the column definition
+    const columnName = column.split(' ')[0];
+    
+    // Check if column already exists
+    const tableInfo = db.prepare(`PRAGMA table_info(${table})`).all();
+    const columnExists = tableInfo.some(col => col.name === columnName);
+    
+    if (columnExists) {
+      console.log(`⚠️  Column ${columnName} already exists in ${table}`);
+      return;
+    }
+    
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column}`);
     console.log(`✅ Added column ${column} to ${table}`);
   } catch (error) {
@@ -336,6 +356,18 @@ function safeAlterTableSync(db, table, column) {
 // Safe table alteration for sqlite wrapper (asynchronous)
 async function safeAlterTableAsync(db, table, column) {
   try {
+    // Extract column name from the column definition
+    const columnName = column.split(' ')[0];
+    
+    // Check if column already exists
+    const tableInfo = await db.all(`PRAGMA table_info(${table})`);
+    const columnExists = tableInfo.some(col => col.name === columnName);
+    
+    if (columnExists) {
+      console.log(`⚠️  Column ${columnName} already exists in ${table}`);
+      return;
+    }
+    
     await db.run(`ALTER TABLE ${table} ADD COLUMN ${column}`);
     console.log(`✅ Added column ${column} to ${table}`);
   } catch (error) {
