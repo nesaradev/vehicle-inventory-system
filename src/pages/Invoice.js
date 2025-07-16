@@ -654,10 +654,30 @@ const Invoice = () => {
     const existingIndex = selectedParts.findIndex(p => p.id === part.id);
     if (existingIndex >= 0) {
       const updated = [...selectedParts];
-      updated[existingIndex].quantity++;
+      const newQuantity = updated[existingIndex].quantity + 1;
+      
+      // Check stock availability before increasing quantity
+      if (newQuantity > part.current_stock) {
+        window.electronAPI.notification.show(
+          'Error', 
+          `Stock limit exceeded! Only ${part.current_stock} units available for ${part.name}`
+        );
+        return;
+      }
+      
+      updated[existingIndex].quantity = newQuantity;
       updated[existingIndex].amount = (updated[existingIndex].selling_price - updated[existingIndex].discount) * updated[existingIndex].quantity;
       setSelectedParts(updated);
     } else {
+      // Check stock availability for new part
+      if (part.current_stock <= 0) {
+        window.electronAPI.notification.show(
+          'Error', 
+          `No stock available for ${part.name}`
+        );
+        return;
+      }
+      
       setSelectedParts([...selectedParts, {
         ...part,
         part_id: part.id, // Explicitly set part_id for stock reduction
@@ -679,6 +699,20 @@ const Invoice = () => {
     if (quantity <= 0) {
       updated.splice(index, 1);
     } else {
+      const selectedPart = updated[index];
+      
+      // Check stock availability - only for parts with part_id (not manual entries)
+      if (selectedPart.part_id) {
+        const partInStock = parts.find(p => p.id === selectedPart.part_id);
+        if (partInStock && quantity > partInStock.current_stock) {
+          window.electronAPI.notification.show(
+            'Error', 
+            `Stock limit exceeded! Only ${partInStock.current_stock} units available for ${selectedPart.description}`
+          );
+          return; // Don't update quantity if stock is insufficient
+        }
+      }
+      
       updated[index].quantity = quantity;
       updated[index].selling_price = updated[index].unit_price * quantity; // Update selling price
       updated[index].amount = updated[index].selling_price - updated[index].discount;

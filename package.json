@@ -84,7 +84,7 @@
       "main": "build/electron/main.js"
     },
     "directories": {
-      "output": "dist-final"
+      "output": "dist-production"
     },
     "win": {
       "target": [
