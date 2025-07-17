@@ -828,11 +828,11 @@ const Invoice = () => {
                 <tr key={part.id}>
                   <td>{part.part_no}</td>
                   <td>{part.description}</td>
-                  <td style={{ textAlign: 'center' }}>Rs. {part.selling_price.toFixed(2)}</td>
+                  <td style={{ textAlign: 'center' }}>LKR {part.selling_price.toFixed(2)}</td>
                   <td style={{ textAlign: 'center' }}>{part.quantity}</td>
-                  <td style={{ textAlign: 'right' }}>Rs. {(part.selling_price * part.quantity).toFixed(2)}</td>
-                  <td style={{ textAlign: 'right' }}>Rs. {(part.discount * part.quantity).toFixed(2)}</td>
-                  <td style={{ textAlign: 'right' }}>Rs. {part.amount.toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }}>LKR {(part.selling_price * part.quantity).toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }}>LKR {(part.discount * part.quantity).toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }}>LKR {part.amount.toFixed(2)}</td>
                 </tr>
               ))}
               {Array.from({ length: Math.max(0, 8 - selectedParts.length) }).map((_, index) => (
@@ -854,15 +854,15 @@ const Invoice = () => {
             <div style={{ border: '1px solid black', padding: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '4px', borderBottom: '1px solid black' }}>
                 <span>Invoice Value</span>
-                <span>Rs. {calculateSubTotal().toFixed(2)}</span>
+                <span>LKR {calculateSubTotal().toFixed(2)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px', paddingBottom: '4px', borderBottom: '1px solid black' }}>
                 <span>Advance Paid</span>
-                <span>Rs. {formData.advance_paid.toFixed(2)}</span>
+                <span>LKR {formData.advance_paid.toFixed(2)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px', fontWeight: 'bold' }}>
                 <span>Balance Amount</span>
-                <span>Rs. {(calculateGrandTotal() + formData.advance_paid).toFixed(2)}</span>
+                <span>LKR {(calculateGrandTotal() + formData.advance_paid).toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -1661,7 +1661,7 @@ const Invoice = () => {
                         </p>
                       </div>
                       <p className="font-medium text-white">
-                        Rs. {part.final_selling_price?.toFixed(2) || '0.00'}
+                        LKR {part.final_selling_price?.toFixed(2) || '0.00'}
                       </p>
                     </div>
                   </div>
@@ -1704,7 +1704,7 @@ const Invoice = () => {
                       />
                     </td>
                     <td className="border-r border-gray-700 px-3 py-2 text-center text-white">
-                      Rs. {part.unit_price.toFixed(2)}
+                      LKR {part.unit_price.toFixed(2)}
                     </td>
                     <td className="border-r border-gray-700 px-3 py-2 text-center">
                       <input
@@ -1737,7 +1737,7 @@ const Invoice = () => {
                       />
                     </td>
                     <td className="px-3 py-2 text-right text-white font-medium">
-                      Rs. {(part.selling_price - part.discount).toFixed(2)}
+                      LKR {(part.selling_price - part.discount).toFixed(2)}
                     </td>
                   </tr>
                 ))}
@@ -1754,7 +1754,7 @@ const Invoice = () => {
                       <td className="border-r border-gray-700 px-3 py-2"></td>
                       <td className="border-r border-gray-700 px-3 py-2"></td>
                       <td className="px-3 py-2 text-right text-white font-semibold">
-                        Rs. {calculateSubTotal().toFixed(2)}
+                        LKR {calculateSubTotal().toFixed(2)}
                       </td>
                     </tr>
                     <tr className="border-t border-gray-700 bg-gray-750">
@@ -1765,7 +1765,7 @@ const Invoice = () => {
                       <td className="border-r border-gray-700 px-3 py-2"></td>
                       <td className="border-r border-gray-700 px-3 py-2 text-white font-medium">Advance Paid:</td>
                       <td className="px-3 py-2 text-right text-white font-medium">
-                        Rs. {formData.advance_paid.toFixed(2)}
+                        LKR {formData.advance_paid.toFixed(2)}
                       </td>
                     </tr>
                     <tr className="border-t border-gray-700 bg-gray-750">
@@ -1776,7 +1776,7 @@ const Invoice = () => {
                       <td className="border-r border-gray-700 px-3 py-2"></td>
                       <td className="border-r border-gray-700 px-3 py-2 text-white font-semibold">Balance Due:</td>
                       <td className="px-3 py-2 text-right text-white font-semibold">
-                        Rs. {(calculateSubTotal() + formData.advance_paid).toFixed(2)}
+                        LKR {(calculateSubTotal() + formData.advance_paid).toFixed(2)}
                       </td>
                     </tr>
                   </>
@@ -1825,7 +1825,7 @@ const Invoice = () => {
                         {invoice.vehicle_no}
                       </td>
                       <td className="px-3 py-2 text-white text-sm text-right">
-                        Rs. {(invoice.balance_due || 0).toFixed(2)}
+                        LKR {(invoice.balance_due || 0).toFixed(2)}
                       </td>
                     </tr>
                   ))

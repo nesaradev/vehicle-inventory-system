@@ -643,12 +643,12 @@ const StockReceive = () => {
                 <tr key={part.id}>
                   <td>{part.pro_no}</td>
                   <td>{part.item_description}</td>
-                  <td style={{ textAlign: 'center' }}>${part.unit_price.toFixed(2)}</td>
+                  <td style={{ textAlign: 'center' }}>LKR {part.unit_price.toFixed(2)}</td>
                   <td style={{ textAlign: 'center' }}>{part.rec_qty}</td>
-                  <td style={{ textAlign: 'right' }}>${part.item_value.toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }}>LKR {part.item_value.toFixed(2)}</td>
                   <td style={{ textAlign: 'center' }}>{part.dis_percent.toFixed(2)}%</td>
-                  <td style={{ textAlign: 'right' }}>${part.discount_value.toFixed(2)}</td>
-                  <td style={{ textAlign: 'right' }}>${part.final_value.toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }}>LKR {part.discount_value.toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }}>LKR {part.final_value.toFixed(2)}</td>
                 </tr>
               ))}
               {Array.from({ length: Math.max(0, 8 - selectedParts.length) }).map((_, index) => (
@@ -671,15 +671,15 @@ const StockReceive = () => {
             <div style={{ border: '1px solid black', padding: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '4px', borderBottom: '1px solid black' }}>
                 <span>Total Value</span>
-                <span>${formData.total_value.toFixed(2)}</span>
+                <span>LKR {formData.total_value.toFixed(2)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px', paddingBottom: '4px', borderBottom: '1px solid black' }}>
                 <span>Discount Value</span>
-                <span>${formData.discount_value.toFixed(2)}</span>
+                <span>LKR {formData.discount_value.toFixed(2)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px', fontWeight: 'bold' }}>
                 <span>Final Value</span>
-                <span>${formData.final_value.toFixed(2)}</span>
+                <span>LKR {formData.final_value.toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -1120,7 +1120,7 @@ const StockReceive = () => {
                         </p>
                       </div>
                       <p className="font-medium text-white">
-                        ${part.cost_price?.toFixed(2) || '0.00'}
+                        LKR {part.cost_price?.toFixed(2) || '0.00'}
                       </p>
                     </div>
                   </div>
@@ -1189,7 +1189,7 @@ const StockReceive = () => {
                       />
                     </td>
                     <td className="border-r border-gray-700 px-3 py-2 text-right text-white font-medium">
-                      ${part.item_value?.toFixed(2) || '0.00'}
+                      LKR {part.item_value?.toFixed(2) || '0.00'}
                     </td>
                     <td className="border-r border-gray-700 px-3 py-2 text-center">
                       <input
@@ -1203,10 +1203,10 @@ const StockReceive = () => {
                       />
                     </td>
                     <td className="border-r border-gray-700 px-3 py-2 text-right text-white font-medium">
-                      ${part.discount_value?.toFixed(2) || '0.00'}
+                      LKR {part.discount_value?.toFixed(2) || '0.00'}
                     </td>
                     <td className="border-r border-gray-700 px-3 py-2 text-right text-white font-medium">
-                      ${part.final_value?.toFixed(2) || '0.00'}
+                      LKR {part.final_value?.toFixed(2) || '0.00'}
                     </td>
                     <td className="px-3 py-2 text-center">
                       <button
@@ -1242,15 +1242,15 @@ const StockReceive = () => {
               <div className="grid grid-cols-4 gap-4 text-center">
                 <div>
                   <p className="text-sm text-gray-400">Total Value</p>
-                  <p className="text-lg font-bold text-white">${formData.total_value.toFixed(2)}</p>
+                  <p className="text-lg font-bold text-white">LKR {formData.total_value.toFixed(2)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-400">Discount Value</p>
-                  <p className="text-lg font-bold text-red-400">${formData.discount_value.toFixed(2)}</p>
+                  <p className="text-lg font-bold text-red-400">LKR {formData.discount_value.toFixed(2)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-400">Final Value</p>
-                  <p className="text-lg font-bold text-green-400">${formData.final_value.toFixed(2)}</p>
+                  <p className="text-lg font-bold text-green-400">LKR {formData.final_value.toFixed(2)}</p>
                 </div>
               </div>
             </div>

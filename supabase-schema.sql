@@ -186,16 +186,5 @@ CREATE TRIGGER update_counters_updated_at
 -- ALTER TABLE public.estimates ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE public.estimate_items ENABLE ROW LEVEL SECURITY;
 
--- Insert sample data for testing
-INSERT INTO public.parts (part_number, name, description, part_type, cost_price, selling_price, final_selling_price, current_stock, low_stock_threshold, supplier, unit) VALUES 
-    ('P001', 'Brake Pad Set', 'Front brake pads for Toyota Camry', 'new', 45.00, 65.00, 60.00, 25, 5, 'ABC Auto Parts', 'SET'),
-    ('P002', 'Oil Filter', 'Engine oil filter universal', 'new', 12.00, 18.00, 16.00, 50, 10, 'XYZ Supplies', 'PCS'),
-    ('P003', 'Headlight Assembly', 'Right side headlight for Honda Civic', 'used', 80.00, 120.00, 110.00, 8, 3, 'Used Parts Co', 'PCS'),
-    ('P004', 'Air Filter', 'Engine air filter for Ford Focus', 'new', 15.00, 25.00, 22.00, 30, 5, 'ABC Auto Parts', 'PCS'),
-    ('P005', 'Timing Belt', 'Timing belt for Nissan Altima', 'new', 35.00, 55.00, 50.00, 12, 3, 'Belt Masters', 'PCS')
-ON CONFLICT (part_number) DO NOTHING;
-
--- Update counters to reflect the sample parts
-UPDATE public.counters SET current_value = 5 WHERE id = 'pro_no';
 
 COMMIT;

@@ -99,57 +99,7 @@ const JobCards = () => {
          GROUP BY j.id
          ORDER BY j.created_at DESC`
       );
-      // If no jobs found, use sample data for demo
-      if (!result || result.length === 0) {
-        console.log('🎯 No job cards found - using sample job cards data');
-        const sampleJobs = [
-          {
-            id: 1,
-            job_no: 'JC0001',
-            customer_name: 'John Smith',
-            customer_phone: '555-0123',
-            customer_email: 'john.smith@email.com',
-            customer_vehicle_make: 'Toyota',
-            customer_vehicle_model: 'Camry',
-            customer_vehicle_year: '2020',
-            customer_vehicle_number: 'ABC123',
-            customer_vehicle_type: 'Car',
-            issue_description: 'Brake pads replacement',
-            status: 'pending',
-            total_cost: 0,
-            advance: 0,
-            service_advisor: '',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            parts_count: 0,
-            parts_total: 0
-          },
-          {
-            id: 2,
-            job_no: 'JC0002',
-            customer_name: 'Jane Doe',
-            customer_phone: '555-0456',
-            customer_email: 'jane.doe@email.com',
-            customer_vehicle_make: 'Honda',
-            customer_vehicle_model: 'Civic',
-            customer_vehicle_year: '2019',
-            customer_vehicle_number: 'XYZ789',
-            customer_vehicle_type: 'Car',
-            issue_description: 'Oil change and filter replacement',
-            status: 'completed',
-            total_cost: 850.00,
-            advance: 200.00,
-            service_advisor: 'Service Advisor 1',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            parts_count: 2,
-            parts_total: 650.00
-          }
-        ];
-        setJobs(sampleJobs);
-      } else {
-        setJobs(result);
-      }
+      setJobs(result || []);
     } catch (error) {
       console.error('Error fetching jobs:', error);
     }
@@ -611,7 +561,7 @@ const JobCards = () => {
                 <span className="text-gray-600 dark:text-gray-400">Parts: </span>
                 <span className="font-medium text-gray-900 dark:text-white">{job.parts_count || 0}</span>
                 <span className="text-gray-600 dark:text-gray-400 ml-3">Total: </span>
-                <span className="font-medium text-gray-900 dark:text-white">${(job.total_cost || 0).toFixed(2)}</span>
+                <span className="font-medium text-gray-900 dark:text-white">LKR {(job.total_cost || 0).toFixed(2)}</span>
               </div>
               
               <div className="flex items-center gap-2">
@@ -743,7 +693,7 @@ const JobCards = () => {
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-gray-600 dark:text-gray-400">Advance:</span>
                         <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                          ${selectedJobCard.advance.toFixed(2)}
+                          LKR {selectedJobCard.advance.toFixed(2)}
                         </span>
                       </div>
                     )}
@@ -936,10 +886,10 @@ const JobCards = () => {
                                 Qty: {part.quantity}
                               </p>
                               <p className="text-xs text-gray-500 dark:text-gray-400">
-                                Unit: ${part.selling_price?.toFixed(2) || '0.00'}
+                                Unit: LKR {part.selling_price?.toFixed(2) || '0.00'}
                               </p>
                               <p className="text-sm font-bold text-gray-900 dark:text-white">
-                                Total: ${part.amount?.toFixed(2) || '0.00'}
+                                Total: LKR {part.amount?.toFixed(2) || '0.00'}
                               </p>
                             </div>
                           </div>
@@ -948,7 +898,7 @@ const JobCards = () => {
                           <div className="flex justify-between items-center">
                             <span className="font-medium text-gray-900 dark:text-white">Total Parts Cost:</span>
                             <span className="font-bold text-gray-900 dark:text-white">
-                              ${jobCardParts.reduce((sum, part) => sum + (part.amount || 0), 0).toFixed(2)}
+                              LKR {jobCardParts.reduce((sum, part) => sum + (part.amount || 0), 0).toFixed(2)}
                             </span>
                           </div>
                         </div>

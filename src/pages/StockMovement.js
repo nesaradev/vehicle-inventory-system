@@ -114,7 +114,7 @@ const StockMovement = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400">Stock In Value</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">${stats.totalValue.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">LKR {stats.totalValue.toFixed(2)}</p>
             </div>
             <FiFilter className="w-8 h-8 text-gray-600 dark:text-gray-400" />
           </div>
@@ -209,7 +209,7 @@ const StockMovement = () => {
                     {movement.cost_price ? (
                       <div>
                         <p className="font-medium text-gray-900 dark:text-white">
-                          ${(movement.quantity * movement.cost_price).toFixed(2)}
+                          LKR {(movement.quantity * movement.cost_price).toFixed(2)}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                           @${movement.cost_price}/unit

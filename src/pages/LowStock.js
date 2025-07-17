@@ -134,7 +134,7 @@ const LowStock = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400">Reorder Value</p>
-              <p className="text-2xl font-bold text-primary-600 dark:text-primary-400">${stats.totalValue.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-primary-600 dark:text-primary-400">LKR {stats.totalValue.toFixed(2)}</p>
             </div>
             <FiShoppingCart className="w-8 h-8 text-primary-600 dark:text-primary-400" />
           </div>
@@ -258,7 +258,7 @@ const LowStock = () => {
                       <td className="py-3 px-2 text-right">
                         <div>
                           <p className="font-medium text-gray-900 dark:text-white">
-                            ${(reorderQty * part.cost_price).toFixed(2)}
+                            LKR {(reorderQty * part.cost_price).toFixed(2)}
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">
                             {reorderQty} units

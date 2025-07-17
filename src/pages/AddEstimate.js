@@ -716,9 +716,9 @@ const AddEstimate = () => {
                       <tr key={index} className="border-t border-gray-700 hover:bg-gray-750">
                         <td className="border-r border-gray-700 px-3 py-2 text-white">{item.type}</td>
                         <td className="border-r border-gray-700 px-3 py-2 text-white">{item.description}</td>
-                        <td className="border-r border-gray-700 px-3 py-2 text-right text-white">{item.price.toFixed(2)}</td>
+                        <td className="border-r border-gray-700 px-3 py-2 text-right text-white">LKR {item.price.toFixed(2)}</td>
                         <td className="border-r border-gray-700 px-3 py-2 text-right text-white">{item.quantity}</td>
-                        <td className="border-r border-gray-700 px-3 py-2 text-right text-white font-medium">{item.value.toFixed(2)}</td>
+                        <td className="border-r border-gray-700 px-3 py-2 text-right text-white font-medium">LKR {item.value.toFixed(2)}</td>
                         <td className="px-3 py-2 text-center text-white">{item.fb}</td>
                       </tr>
                     ))}
@@ -976,7 +976,7 @@ const AddEstimate = () => {
                 <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="font-medium text-gray-300">Total</span>
-                    <span className="text-white font-semibold">Rs. {calculateTotal().toFixed(2)}</span>
+                    <span className="text-white font-semibold">LKR {calculateTotal().toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-sm items-center">
                     <span className="font-medium text-gray-300">Discount</span>
@@ -990,7 +990,7 @@ const AddEstimate = () => {
                   </div>
                   <div className="flex justify-between text-lg font-bold border-t border-gray-600 pt-3">
                     <span className="text-gray-200">Balance Due</span>
-                    <span className="text-green-400">Rs. {calculateBalanceDue().toFixed(2)}</span>
+                    <span className="text-green-400">LKR {calculateBalanceDue().toFixed(2)}</span>
                   </div>
                 </div>
               </div>

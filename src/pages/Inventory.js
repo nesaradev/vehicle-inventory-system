@@ -97,130 +97,10 @@ const Inventory = () => {
          FROM parts ORDER BY name`
       );
       
-      // If no parts found, use sample data for demo
-      if (!result || result.length === 0) {
-        console.log('🎯 No parts found - using sample inventory data');
-        const sampleParts = [
-          {
-            id: 1,
-            pro_no: 'P001',
-            part_number: 'BRK001',
-            name: 'Brake Pads',
-            item_name: 'Brake Pads',
-            description: 'Front brake pads for Toyota Camry',
-            part_type: 'new',
-            cost_price: 45.00,
-            selling_price: 65.00,
-            final_selling_price: 65.00,
-            current_stock: 25,
-            low_stock_threshold: 10,
-            supplier: 'AutoParts Co.',
-            location: 'A1-B2',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          {
-            id: 2,
-            pro_no: 'P002',
-            part_number: 'ENG002',
-            name: 'Engine Oil Filter',
-            item_name: 'Engine Oil Filter',
-            description: 'Oil filter for Honda Civic',
-            part_type: 'new',
-            cost_price: 12.00,
-            selling_price: 18.00,
-            final_selling_price: 18.00,
-            current_stock: 5,
-            low_stock_threshold: 10,
-            supplier: 'FilterTech',
-            location: 'B3-C1',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          {
-            id: 3,
-            pro_no: 'P003',
-            part_number: 'TIR003',
-            name: 'All-Season Tire',
-            item_name: 'All-Season Tire',
-            description: '205/55R16 All-Season Tire',
-            part_type: 'new',
-            cost_price: 89.00,
-            selling_price: 129.00,
-            final_selling_price: 129.00,
-            current_stock: 15,
-            low_stock_threshold: 8,
-            supplier: 'TirePlus',
-            location: 'C2-D1',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ];
-        setParts(sampleParts);
-      } else {
-        setParts(result);
-      }
+      setParts(result || []);
     } catch (error) {
       console.error('Error fetching parts:', error);
-      // Fallback to sample data if database fails
-      console.log('🎯 Database error - using sample inventory data');
-      const sampleParts = [
-        {
-          id: 1,
-          pro_no: 'P001',
-          part_number: 'BRK001',
-          name: 'Brake Pads',
-          item_name: 'Brake Pads',
-          description: 'Front brake pads for Toyota Camry',
-          part_type: 'new',
-          cost_price: 45.00,
-          selling_price: 65.00,
-          final_selling_price: 65.00,
-          current_stock: 25,
-          low_stock_threshold: 10,
-          supplier: 'AutoParts Co.',
-          location: 'A1-B2',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        {
-          id: 2,
-          pro_no: 'P002',
-          part_number: 'ENG002',
-          name: 'Engine Oil Filter',
-          item_name: 'Engine Oil Filter',
-          description: 'Oil filter for Honda Civic',
-          part_type: 'new',
-          cost_price: 12.00,
-          selling_price: 18.00,
-          final_selling_price: 18.00,
-          current_stock: 5,
-          low_stock_threshold: 10,
-          supplier: 'FilterTech',
-          location: 'B3-C1',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        {
-          id: 3,
-          pro_no: 'P003',
-          part_number: 'TIR003',
-          name: 'All-Season Tire',
-          item_name: 'All-Season Tire',
-          description: '205/55R16 All-Season Tire',
-          part_type: 'new',
-          cost_price: 89.00,
-          selling_price: 129.00,
-          final_selling_price: 129.00,
-          current_stock: 15,
-          low_stock_threshold: 8,
-          supplier: 'TirePlus',
-          location: 'C2-D1',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }
-      ];
-      setParts(sampleParts);
+      setParts([]);
     }
   };
 
@@ -513,7 +393,7 @@ const Inventory = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400">Inventory Value</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">${stats.totalValue.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">LKR {stats.totalValue.toFixed(2)}</p>
             </div>
             <FiDollarSign className="w-8 h-8 text-green-600 dark:text-green-400" />
           </div>
@@ -633,18 +513,18 @@ const Inventory = () => {
                       </div>
                     </td>
                     <td className="py-3 px-2 text-right text-gray-900 dark:text-white">
-                      ${part.cost_price.toFixed(2)}
+                      LKR {part.cost_price.toFixed(2)}
                     </td>
                     <td className="py-3 px-2 text-right">
                       <div>
-                        <p className="font-medium text-gray-900 dark:text-white">${part.final_selling_price.toFixed(2)}</p>
+                        <p className="font-medium text-gray-900 dark:text-white">LKR {part.final_selling_price.toFixed(2)}</p>
                         <p className="text-xs text-green-600 dark:text-green-400">
                           +{profitMargin.toFixed(1)}%
                         </p>
                       </div>
                     </td>
                     <td className="py-3 px-2 text-right font-medium text-gray-900 dark:text-white">
-                      ${(part.current_stock * part.final_selling_price).toFixed(2)}
+                      LKR {(part.current_stock * part.final_selling_price).toFixed(2)}
                     </td>
                     <td className="py-3 px-2 text-center">
                       <span className={`px-2 py-1 text-xs rounded-full ${status.class}`}>
@@ -760,15 +640,15 @@ const Inventory = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Cost Price</label>
-                      <p className="text-xl font-bold text-gray-900 dark:text-white">${selectedPart.cost_price?.toFixed(2) || '0.00'}</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">LKR {selectedPart.cost_price?.toFixed(2) || '0.00'}</p>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Selling Price</label>
-                      <p className="text-xl font-bold text-gray-900 dark:text-white">${selectedPart.selling_price?.toFixed(2) || '0.00'}</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">LKR {selectedPart.selling_price?.toFixed(2) || '0.00'}</p>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Final Selling Price</label>
-                      <p className="text-xl font-bold text-green-600 dark:text-green-400">${selectedPart.final_selling_price?.toFixed(2) || '0.00'}</p>
+                      <p className="text-xl font-bold text-green-600 dark:text-green-400">LKR {selectedPart.final_selling_price?.toFixed(2) || '0.00'}</p>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Current Stock</label>
@@ -780,7 +660,7 @@ const Inventory = () => {
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Value</label>
-                      <p className="text-xl font-bold text-gray-900 dark:text-white">${(selectedPart.current_stock * selectedPart.final_selling_price).toFixed(2)}</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">LKR {(selectedPart.current_stock * selectedPart.final_selling_price).toFixed(2)}</p>
                     </div>
                   </div>
                 </div>

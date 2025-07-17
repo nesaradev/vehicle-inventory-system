@@ -177,7 +177,7 @@ const AddStock = () => {
                       </span>
                     </span>
                     <span className="text-sm text-gray-600 dark:text-gray-400">
-                      ${part.final_selling_price}
+                      LKR {part.final_selling_price}
                     </span>
                   </div>
                 </div>
@@ -246,7 +246,7 @@ const AddStock = () => {
               {/* Cost Price */}
               <div>
                 <label htmlFor="cost_price" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Part Cost ($) *
+                  Part Cost (LKR) *
                 </label>
                 <input
                   type="number"
@@ -264,7 +264,7 @@ const AddStock = () => {
               {/* Selling Price */}
               <div>
                 <label htmlFor="selling_price" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Selling Price ($) *
+                  Selling Price (LKR) *
                 </label>
                 <input
                   type="number"
@@ -282,7 +282,7 @@ const AddStock = () => {
               {/* Final Selling Price */}
               <div className="md:col-span-2">
                 <label htmlFor="final_selling_price" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Final Selling Price ($) *
+                  Final Selling Price (LKR) *
                 </label>
                 <input
                   type="number"
@@ -320,7 +320,7 @@ const AddStock = () => {
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   Profit Margin per Unit: 
                   <span className="font-semibold text-primary-600 dark:text-primary-400 ml-2">
-                    ${(parseFloat(formData.final_selling_price) - parseFloat(formData.cost_price)).toFixed(2)} 
+                    LKR {(parseFloat(formData.final_selling_price) - parseFloat(formData.cost_price)).toFixed(2)} 
                     ({((parseFloat(formData.final_selling_price) - parseFloat(formData.cost_price)) / parseFloat(formData.cost_price) * 100).toFixed(1)}%)
                   </span>
                 </p>
@@ -328,7 +328,7 @@ const AddStock = () => {
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                     Total Investment: 
                     <span className="font-semibold ml-2">
-                      ${(parseFloat(formData.cost_price) * parseInt(formData.quantity)).toFixed(2)}
+                      LKR {(parseFloat(formData.cost_price) * parseInt(formData.quantity)).toFixed(2)}
                     </span>
                   </p>
                 )}

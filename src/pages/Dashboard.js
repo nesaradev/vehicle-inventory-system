@@ -128,80 +128,23 @@ const Dashboard = () => {
         `SELECT status, COUNT(*) as count FROM job_cards GROUP BY status`
       );
 
-      // If no data found, use sample data for demo
-      const hasSampleData = totalParts?.count > 0 || recent?.length > 0;
-      
-      if (!hasSampleData) {
-        console.log('🎯 No data found - using sample data for demo');
-        setStats({
-          totalParts: 3,
-          lowStockItems: 1,
-          totalValue: 2567.00,
-          totalCost: 1834.00,
-          activeJobs: 1,
-          completedJobs: 1,
-          todayRevenue: 850.00,
-          monthRevenue: 2450.00
-        });
+      setStats({
+        totalParts: totalParts?.count || 0,
+        lowStockItems: lowStock?.length || 0,
+        totalValue: inventoryValue?.revenue || 0,
+        totalCost: inventoryValue?.cost || 0,
+        activeJobs: activeJobs?.count || 0,
+        completedJobs: completedJobs?.count || 0,
+        todayRevenue: todayRevenue?.total || 0,
+        monthRevenue: monthRevenue?.total || 0
+      });
 
-        setLowStockParts([
-          {
-            id: 2,
-            name: 'Engine Oil Filter',
-            part_number: 'ENG002',
-            current_stock: 5,
-            low_stock_threshold: 10
-          }
-        ]);
-
-        setRecentJobs([
-          {
-            id: 1,
-            job_name: 'Brake Service',
-            customer_vehicle_number: 'ABC123',
-            customer_name: 'John Smith',
-            status: 'pending'
-          },
-          {
-            id: 2,
-            job_name: 'Oil Change',
-            customer_vehicle_number: 'XYZ789',
-            customer_name: 'Jane Doe',
-            status: 'completed'
-          }
-        ]);
-
-        setMonthlyData([
-          { month: 'Jan', revenue: 1200, jobs: 8 },
-          { month: 'Feb', revenue: 1800, jobs: 12 },
-          { month: 'Mar', revenue: 2450, jobs: 15 }
-        ]);
-
-        setJobStatusData([
-          { status: 'pending', count: 1 },
-          { status: 'completed', count: 1 }
-        ]);
-      } else {
-        setStats({
-          totalParts: totalParts?.count || 0,
-          lowStockItems: lowStock?.length || 0,
-          totalValue: inventoryValue?.revenue || 0,
-          totalCost: inventoryValue?.cost || 0,
-          activeJobs: activeJobs?.count || 0,
-          completedJobs: completedJobs?.count || 0,
-          todayRevenue: todayRevenue?.total || 0,
-          monthRevenue: monthRevenue?.total || 0
-        });
-
-        setLowStockParts(lowStock || []);
-        setRecentJobs(recent || []);
-        setMonthlyData(monthly || []);
-        setJobStatusData(jobStatus || []);
-      }
-      // Data loaded successfully - keep using sample data for demo
+      setLowStockParts(lowStock || []);
+      setRecentJobs(recent || []);
+      setMonthlyData(monthly || []);
+      setJobStatusData(jobStatus || []);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      // Keep using sample data - don't show error
     }
   };
 
@@ -280,7 +223,7 @@ const Dashboard = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-500 dark:text-gray-400 text-sm">Today's Revenue</p>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">${stats.todayRevenue.toFixed(2)}</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">LKR {stats.todayRevenue.toFixed(2)}</p>
             </div>
             <div className="p-3 bg-green-100 dark:bg-green-900/20 rounded-lg">
               <FiDollarSign className="w-6 h-6 text-green-600 dark:text-green-400" />

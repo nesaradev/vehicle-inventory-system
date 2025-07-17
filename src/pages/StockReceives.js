@@ -230,12 +230,12 @@ const StockReceives = () => {
                 <tr key={item.id}>
                   <td>{item.pro_no}</td>
                   <td>{item.item_description}</td>
-                  <td style={{ textAlign: 'center' }}>${item.unit_price?.toFixed(2) || '0.00'}</td>
+                  <td style={{ textAlign: 'center' }}>LKR {item.unit_price?.toFixed(2) || '0.00'}</td>
                   <td style={{ textAlign: 'center' }}>{item.rec_qty}</td>
-                  <td style={{ textAlign: 'right' }}>${item.item_value?.toFixed(2) || '0.00'}</td>
+                  <td style={{ textAlign: 'right' }}>LKR {item.item_value?.toFixed(2) || '0.00'}</td>
                   <td style={{ textAlign: 'center' }}>{item.dis_percent?.toFixed(2) || '0.00'}%</td>
-                  <td style={{ textAlign: 'right' }}>${item.discount_value?.toFixed(2) || '0.00'}</td>
-                  <td style={{ textAlign: 'right' }}>${item.final_value?.toFixed(2) || '0.00'}</td>
+                  <td style={{ textAlign: 'right' }}>LKR {item.discount_value?.toFixed(2) || '0.00'}</td>
+                  <td style={{ textAlign: 'right' }}>LKR {item.final_value?.toFixed(2) || '0.00'}</td>
                 </tr>
               ))}
               {Array.from({ length: Math.max(0, 8 - printStockReceiveItems.length) }).map((_, index) => (
@@ -258,15 +258,15 @@ const StockReceives = () => {
             <div style={{ border: '1px solid black', padding: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '4px', borderBottom: '1px solid black' }}>
                 <span>Total Value</span>
-                <span>${printStockReceive?.total_value?.toFixed(2) || '0.00'}</span>
+                <span>LKR {printStockReceive?.total_value?.toFixed(2) || '0.00'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px', paddingBottom: '4px', borderBottom: '1px solid black' }}>
                 <span>Discount Value</span>
-                <span>${printStockReceive?.discount_value?.toFixed(2) || '0.00'}</span>
+                <span>LKR {printStockReceive?.discount_value?.toFixed(2) || '0.00'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px', fontWeight: 'bold' }}>
                 <span>Final Value</span>
-                <span>${printStockReceive?.final_value?.toFixed(2) || '0.00'}</span>
+                <span>LKR {printStockReceive?.final_value?.toFixed(2) || '0.00'}</span>
               </div>
             </div>
           </div>
@@ -566,7 +566,7 @@ const StockReceives = () => {
                 </div>
                 <div className="text-right">
                   <p className="font-medium text-gray-900 dark:text-white">
-                    ${day.total_value.toFixed(2)}
+                    LKR {day.total_value.toFixed(2)}
                   </p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     {day.total_receives} receipt{day.total_receives !== 1 ? 's' : ''}
@@ -598,7 +598,7 @@ const StockReceives = () => {
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                    ${(stockReceive.final_value || 0).toFixed(2)}
+                    LKR {(stockReceive.final_value || 0).toFixed(2)}
                   </p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     {stockReceive.items_count || 0} items
@@ -713,21 +713,21 @@ const StockReceives = () => {
                       <FiDollarSign className="w-4 h-4 text-gray-400" />
                       <span className="text-sm text-gray-600 dark:text-gray-400">Total Value:</span>
                       <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        ${selectedStockReceive.total_value?.toFixed(2) || '0.00'}
+                        LKR {selectedStockReceive.total_value?.toFixed(2) || '0.00'}
                       </span>
                     </div>
                     {selectedStockReceive.discount_value > 0 && (
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-gray-600 dark:text-gray-400">Discount:</span>
                         <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                          -${selectedStockReceive.discount_value?.toFixed(2) || '0.00'}
+                          -LKR {selectedStockReceive.discount_value?.toFixed(2) || '0.00'}
                         </span>
                       </div>
                     )}
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-gray-600 dark:text-gray-400">Final Value:</span>
                       <span className="text-sm font-bold text-green-600 dark:text-green-400">
-                        ${selectedStockReceive.final_value?.toFixed(2) || '0.00'}
+                        LKR {selectedStockReceive.final_value?.toFixed(2) || '0.00'}
                       </span>
                     </div>
                   </div>
@@ -815,22 +815,22 @@ const StockReceives = () => {
                                 )}
                               </td>
                               <td className="px-4 py-4 text-sm text-right text-gray-900 dark:text-white">
-                                ${item.unit_price?.toFixed(2) || '0.00'}
+                                LKR {item.unit_price?.toFixed(2) || '0.00'}
                               </td>
                               <td className="px-4 py-4 text-sm text-right text-gray-900 dark:text-white">
                                 {item.rec_qty}
                               </td>
                               <td className="px-4 py-4 text-sm text-right text-gray-900 dark:text-white">
-                                ${item.item_value?.toFixed(2) || '0.00'}
+                                LKR {item.item_value?.toFixed(2) || '0.00'}
                               </td>
                               <td className="px-4 py-4 text-sm text-right text-gray-900 dark:text-white">
                                 {item.dis_percent?.toFixed(2) || '0.00'}%
                               </td>
                               <td className="px-4 py-4 text-sm text-right text-gray-900 dark:text-white">
-                                ${item.discount_value?.toFixed(2) || '0.00'}
+                                LKR {item.discount_value?.toFixed(2) || '0.00'}
                               </td>
                               <td className="px-4 py-4 text-sm text-right font-medium text-gray-900 dark:text-white">
-                                ${item.final_value?.toFixed(2) || '0.00'}
+                                LKR {item.final_value?.toFixed(2) || '0.00'}
                               </td>
                             </tr>
                           ))}
@@ -841,14 +841,14 @@ const StockReceives = () => {
                               Total:
                             </td>
                             <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-white">
-                              ${stockReceiveItems.reduce((sum, item) => sum + (item.item_value || 0), 0).toFixed(2)}
+                              LKR {stockReceiveItems.reduce((sum, item) => sum + (item.item_value || 0), 0).toFixed(2)}
                             </td>
                             <td className="px-4 py-3"></td>
                             <td className="px-4 py-3 text-right font-medium text-red-600 dark:text-red-400">
-                              ${stockReceiveItems.reduce((sum, item) => sum + (item.discount_value || 0), 0).toFixed(2)}
+                              LKR {stockReceiveItems.reduce((sum, item) => sum + (item.discount_value || 0), 0).toFixed(2)}
                             </td>
                             <td className="px-4 py-3 text-right font-bold text-green-600 dark:text-green-400">
-                              ${stockReceiveItems.reduce((sum, item) => sum + (item.final_value || 0), 0).toFixed(2)}
+                              LKR {stockReceiveItems.reduce((sum, item) => sum + (item.final_value || 0), 0).toFixed(2)}
                             </td>
                           </tr>
                         </tfoot>

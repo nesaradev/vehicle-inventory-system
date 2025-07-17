@@ -267,7 +267,7 @@ const EditJobCard = () => {
                           </p>
                         </div>
                         <p className="font-medium text-gray-900 dark:text-white">
-                          ${part.final_selling_price}
+                          LKR {part.final_selling_price}
                         </p>
                       </div>
                     </div>
@@ -312,10 +312,10 @@ const EditJobCard = () => {
                           />
                         </td>
                         <td className="py-3 px-2 text-right text-gray-900 dark:text-white">
-                          ${part.unit_price.toFixed(2)}
+                          LKR {part.unit_price.toFixed(2)}
                         </td>
                         <td className="py-3 px-2 text-right font-medium text-gray-900 dark:text-white">
-                          ${part.total_price.toFixed(2)}
+                          LKR {part.total_price.toFixed(2)}
                         </td>
                         <td className="py-3 px-2">
                           <button
@@ -335,7 +335,7 @@ const EditJobCard = () => {
                         Total:
                       </td>
                       <td className="py-3 px-2 text-right font-bold text-xl text-primary-600 dark:text-primary-400">
-                        ${calculateTotal().toFixed(2)}
+                        LKR {calculateTotal().toFixed(2)}
                       </td>
                       <td></td>
                     </tr>
