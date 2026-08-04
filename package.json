@@ -35,7 +35,6 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
-    "better-sqlite3": "^11.10.0",
     "electron-is-dev": "^2.0.0",
     "html2canvas": "^1.4.1",
     "node-notifier": "^10.0.1",
