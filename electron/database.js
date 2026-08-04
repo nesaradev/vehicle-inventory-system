@@ -543,6 +543,8 @@ const createTables = async () => {
           part_id INTEGER,
           pro_no TEXT,
           item_description TEXT,
+          supplier_name TEXT,
+          sup_ref TEXT,
           unit_price REAL,
           rec_qty INTEGER,
           item_value REAL,

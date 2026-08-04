@@ -23,8 +23,6 @@ const StockReceive = () => {
   const [formData, setFormData] = useState({
     grn_no: '',
     rec_date: getLocalDate(),
-    sup_ref: '',
-    supplier_name: '',
     lot_name: '',
     remarks: '',
     items: [],
@@ -40,7 +38,7 @@ const StockReceive = () => {
   const saveDraft = () => {
     if (preventAutoSaveRef.current) return; // Don't save if auto-save is prevented
     
-    if (formData.supplier_name || formData.lot_name || selectedParts.length > 0) {
+    if (formData.lot_name || formData.remarks || selectedParts.length > 0) {
       const draftData = {
         formData,
         selectedParts,
@@ -64,7 +62,12 @@ const StockReceive = () => {
           rec_date: getLocalDate()
         };
         setFormData(updatedFormData);
-        setSelectedParts(draftData.selectedParts || []);
+        setSelectedParts((draftData.selectedParts || []).map((part, index) => ({
+          ...part,
+          line_id: part.line_id || `${part.id}-draft-${index}`,
+          supplier_name: part.supplier_name || draftData.formData?.supplier_name || part.supplier || '',
+          sup_ref: part.sup_ref || draftData.formData?.sup_ref || ''
+        })));
         setSearchTerm(draftData.searchTerm || '');
         setShowPartSelector(draftData.showPartSelector || false);
         setIsDraftLoaded(true);
@@ -95,8 +98,6 @@ const StockReceive = () => {
     setFormData({
       grn_no: '',
       rec_date: getLocalDate(),
-      sup_ref: '',
-      supplier_name: '',
       lot_name: '',
       remarks: '',
       items: [],
@@ -194,7 +195,7 @@ const StockReceive = () => {
   useEffect(() => {
     // Auto-save every 30 seconds if there's meaningful data
     const autoSaveInterval = setInterval(() => {
-      if (formData.supplier_name || formData.lot_name || selectedParts.length > 0) {
+      if (formData.lot_name || formData.remarks || selectedParts.length > 0) {
         saveDraft();
       }
     }, 30000);
@@ -224,7 +225,7 @@ const StockReceive = () => {
   // Save draft when form data changes (debounced)
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      if (formData.supplier_name || formData.lot_name || selectedParts.length > 0) {
+      if (formData.lot_name || formData.remarks || selectedParts.length > 0) {
         saveDraft();
       }
     }, 2000); // Wait 2 seconds after last change
@@ -240,7 +241,12 @@ const StockReceive = () => {
       );
       
       if (existingGRN) {
-        setFormData(prev => ({ ...prev, grn_no: existingGRN.grn_no }));
+        setFormData(prev => ({
+          ...prev,
+          grn_no: existingGRN.grn_no,
+          lot_name: existingGRN.lot_name || '',
+          remarks: existingGRN.remarks || ''
+        }));
         console.log('Using existing GRN for receive date:', existingGRN.grn_no);
       } else {
         const result = await window.electronAPI.database.query(
@@ -321,57 +327,60 @@ const StockReceive = () => {
       return;
     }
     
-    const existingIndex = selectedParts.findIndex(p => p.id === part.id);
-    if (existingIndex >= 0) {
-      const updated = [...selectedParts];
-      const newQty = updated[existingIndex].rec_qty + 1;
-      
-      if (newQty > availableQty) {
-        window.electronAPI.notification.show('Error', 
-          `Cannot document ${newQty} units. Only ${availableQty} units available for documentation for ${part.name}`);
-        return;
-      }
-      
-      updated[existingIndex].rec_qty = newQty;
-      updated[existingIndex].item_value = updated[existingIndex].unit_price * newQty;
-      updated[existingIndex].final_value = updated[existingIndex].item_value - (updated[existingIndex].item_value * updated[existingIndex].dis_percent / 100);
-      setSelectedParts(updated);
-    } else {
-      setSelectedParts([...selectedParts, {
-        ...part,
-        pro_no: part.pro_no || part.part_number,
-        item_description: part.name,
-        unit_price: part.cost_price || 0,
-        rec_qty: 1,
-        item_value: part.cost_price || 0,
-        dis_percent: 0,
-        discount_value: 0,
-        final_value: part.cost_price || 0
-      }]);
+    const allocatedQty = selectedParts
+      .filter(selectedPart => selectedPart.id === part.id)
+      .reduce((sum, selectedPart) => sum + selectedPart.rec_qty, 0);
+
+    if (allocatedQty >= availableQty) {
+      window.electronAPI.notification.show('Error',
+        `All ${availableQty} available units for ${part.name} are already allocated to GRN rows.`);
+      return;
     }
+
+    const updated = [...selectedParts, {
+      ...part,
+      line_id: `${part.id}-${Date.now()}-${selectedParts.length}`,
+      pro_no: part.pro_no || part.part_number,
+      item_description: part.name,
+      supplier_name: part.supplier || '',
+      sup_ref: '',
+      unit_price: part.cost_price || 0,
+      rec_qty: 1,
+      item_value: part.cost_price || 0,
+      dis_percent: 0,
+      discount_value: 0,
+      final_value: part.cost_price || 0
+    }];
+    setSelectedParts(updated);
     setShowPartSelector(false);
     setSearchTerm('');
-    calculateTotals();
+    calculateTotals(updated);
   };
 
   const handleQuantityChange = (index, quantity) => {
     const updated = [...selectedParts];
     const part = updated[index];
     const availableQty = undocumentedStock[part.id]?.available_qty || 0;
+    const otherRowsQty = selectedParts.reduce((sum, selectedPart, selectedIndex) => (
+      selectedIndex !== index && selectedPart.id === part.id
+        ? sum + selectedPart.rec_qty
+        : sum
+    ), 0);
     
     if (quantity <= 0) {
       updated.splice(index, 1);
-    } else if (quantity > availableQty) {
+    } else if (otherRowsQty + quantity > availableQty) {
       window.electronAPI.notification.show('Error', 
-        `Cannot document ${quantity} units. Only ${availableQty} units available for documentation for ${part.item_description}`);
+        `Cannot allocate ${otherRowsQty + quantity} units across these rows. Only ${availableQty} units are available for ${part.item_description}.`);
       return;
     } else {
       updated[index].rec_qty = quantity;
       updated[index].item_value = updated[index].unit_price * quantity;
-      updated[index].final_value = updated[index].item_value - (updated[index].item_value * updated[index].dis_percent / 100);
+      updated[index].discount_value = updated[index].item_value * updated[index].dis_percent / 100;
+      updated[index].final_value = updated[index].item_value - updated[index].discount_value;
     }
     setSelectedParts(updated);
-    calculateTotals();
+    calculateTotals(updated);
   };
 
   const handlePriceChange = (index, field, value) => {
@@ -381,19 +390,23 @@ const StockReceive = () => {
     if (field === 'unit_price' || field === 'rec_qty') {
       updated[index].item_value = updated[index].unit_price * updated[index].rec_qty;
     }
-    
-    if (field === 'dis_percent') {
-      updated[index].discount_value = updated[index].item_value * updated[index].dis_percent / 100;
-      updated[index].final_value = updated[index].item_value - updated[index].discount_value;
-    }
+
+    updated[index].discount_value = updated[index].item_value * updated[index].dis_percent / 100;
+    updated[index].final_value = updated[index].item_value - updated[index].discount_value;
     
     setSelectedParts(updated);
-    calculateTotals();
+    calculateTotals(updated);
   };
 
-  const calculateTotals = () => {
-    const totalValue = selectedParts.reduce((sum, part) => sum + (part.item_value || 0), 0);
-    const discountValue = selectedParts.reduce((sum, part) => sum + (part.discount_value || 0), 0);
+  const handleItemTextChange = (index, field, value) => {
+    const updated = [...selectedParts];
+    updated[index][field] = value;
+    setSelectedParts(updated);
+  };
+
+  const calculateTotals = (partsToTotal = selectedParts) => {
+    const totalValue = partsToTotal.reduce((sum, part) => sum + (part.item_value || 0), 0);
+    const discountValue = partsToTotal.reduce((sum, part) => sum + (part.discount_value || 0), 0);
     const finalValue = totalValue - discountValue;
     
     setFormData(prev => ({
@@ -408,7 +421,7 @@ const StockReceive = () => {
     const updated = [...selectedParts];
     updated.splice(index, 1);
     setSelectedParts(updated);
-    calculateTotals();
+    calculateTotals(updated);
   };
 
   const filteredParts = parts.filter(part => {
@@ -419,22 +432,29 @@ const StockReceive = () => {
   });
 
   const handleSave = async () => {
-    if (!formData.supplier_name) {
-      window.electronAPI.notification.show('Error', 'Please fill in supplier name');
-      return;
-    }
-
     if (selectedParts.length === 0) {
       window.electronAPI.notification.show('Error', 'Please add at least one part');
       return;
     }
 
-    // Validate all quantities against available undocumented stock
-    for (const part of selectedParts) {
-      const availableQty = undocumentedStock[part.id]?.available_qty || 0;
-      if (part.rec_qty > availableQty) {
+    const itemWithoutSupplier = selectedParts.find(part => !part.supplier_name?.trim());
+    if (itemWithoutSupplier) {
+      window.electronAPI.notification.show('Error',
+        `Please enter a supplier name for "${itemWithoutSupplier.item_description}".`);
+      return;
+    }
+
+    const quantitiesByPart = selectedParts.reduce((quantities, part) => {
+      quantities[part.id] = (quantities[part.id] || 0) + part.rec_qty;
+      return quantities;
+    }, {});
+
+    for (const [partId, requestedQty] of Object.entries(quantitiesByPart)) {
+      const availableQty = undocumentedStock[partId]?.available_qty || 0;
+      if (requestedQty > availableQty) {
+        const part = selectedParts.find(selectedPart => String(selectedPart.id) === partId);
         window.electronAPI.notification.show('Error', 
-          `Cannot save GRN. Part "${part.item_description}" quantity (${part.rec_qty}) exceeds available undocumented stock (${availableQty}). Please adjust quantities or add more stock first.`);
+          `Cannot save GRN. The combined rows for "${part?.item_description || 'this part'}" request ${requestedQty} units, but only ${availableQty} are available.`);
         return;
       }
     }
@@ -529,15 +549,13 @@ const StockReceive = () => {
 
           {/* GRN Header */}
           <div className="grn-header">
-            <div className="grn-details">
-              <div>GRN No: {formData.grn_no}</div>
-              <div>Date: {formData.rec_date}</div>
-              <div>Supplier Ref: {formData.sup_ref}</div>
-            </div>
-            <div className="grn-details">
-              <div>Supplier: {formData.supplier_name}</div>
-              <div>Lot Name: {formData.lot_name}</div>
-              <div>Remarks: {formData.remarks}</div>
+             <div className="grn-details">
+               <div>GRN No: {formData.grn_no}</div>
+               <div>Date: {formData.rec_date}</div>
+             </div>
+             <div className="grn-details">
+               <div>Lot Name: {formData.lot_name}</div>
+               <div>Remarks: {formData.remarks}</div>
             </div>
           </div>
 
@@ -545,9 +563,11 @@ const StockReceive = () => {
           <table className="items-table">
             <thead>
               <tr>
-                <th>Pro No</th>
-                <th>Item Description</th>
-                <th style={{ textAlign: 'center' }}>Unit Price</th>
+                 <th>Pro No</th>
+                 <th>Item Description</th>
+                 <th>Supplier</th>
+                 <th>Supplier Ref</th>
+                 <th style={{ textAlign: 'center' }}>Unit Price</th>
                 <th style={{ textAlign: 'center' }}>Rec Qty</th>
                 <th style={{ textAlign: 'right' }}>Item Value</th>
                 <th style={{ textAlign: 'center' }}>Dis %</th>
@@ -557,9 +577,11 @@ const StockReceive = () => {
             </thead>
             <tbody>
               {selectedParts.map((part, index) => (
-                <tr key={part.id}>
+                <tr key={part.line_id || `${part.id}-${index}`}>
                   <td>{part.pro_no}</td>
                   <td>{part.item_description}</td>
+                  <td>{part.supplier_name}</td>
+                  <td>{part.sup_ref}</td>
                   <td style={{ textAlign: 'center' }}>LKR {part.unit_price.toFixed(2)}</td>
                   <td style={{ textAlign: 'center' }}>{part.rec_qty}</td>
                   <td style={{ textAlign: 'right' }}>LKR {part.item_value.toFixed(2)}</td>
@@ -570,6 +592,8 @@ const StockReceive = () => {
               ))}
               {Array.from({ length: Math.max(0, 8 - selectedParts.length) }).map((_, index) => (
                 <tr key={`empty-${index}`}>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
                   <td>&nbsp;</td>
                   <td>&nbsp;</td>
                   <td>&nbsp;</td>
@@ -655,7 +679,7 @@ const StockReceive = () => {
             }
             
             .company-details {
-              font-size: 12px;
+              font-size: 9px;
               line-height: 1.4;
               color: black !important;
             }
@@ -690,7 +714,7 @@ const StockReceive = () => {
             .items-table th,
             .items-table td {
               border: 1px solid black;
-              padding: 8px;
+              padding: 5px;
               text-align: left;
               color: black !important;
             }
@@ -782,7 +806,7 @@ const StockReceive = () => {
           }
           
           .print-preview-content .company-details {
-            font-size: 12px;
+            font-size: 9px;
             line-height: 1.4;
             color: black;
           }
@@ -817,7 +841,7 @@ const StockReceive = () => {
           .print-preview-content .items-table th,
           .print-preview-content .items-table td {
             border: 1px solid black;
-            padding: 8px;
+            padding: 5px;
             text-align: left;
             color: black;
           }
@@ -944,29 +968,6 @@ const StockReceive = () => {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Sup Ref #</label>
-            <input
-              type="text"
-              value={formData.sup_ref}
-              onChange={(e) => setFormData(prev => ({ ...prev, sup_ref: e.target.value }))}
-              className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Supplier reference"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-6 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Supplier Name</label>
-            <input
-              type="text"
-              value={formData.supplier_name}
-              onChange={(e) => setFormData(prev => ({ ...prev, supplier_name: e.target.value }))}
-              className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter supplier name"
-            />
-          </div>
-          <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Lot Name</label>
             <input
               type="text"
@@ -1060,13 +1061,15 @@ const StockReceive = () => {
             </div>
           )}
 
-          <div className="border border-gray-600 rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="border border-gray-600 rounded-lg overflow-x-auto">
+            <table className="w-full min-w-[1500px] text-sm">
               <thead className="bg-gray-700">
                 <tr>
-                  <th className="border-r border-gray-600 px-3 py-3 text-left font-medium text-gray-200">Pro No</th>
-                  <th className="border-r border-gray-600 px-3 py-3 text-left font-medium text-gray-200">Item Description</th>
-                  <th className="border-r border-gray-600 px-3 py-3 text-center font-medium text-gray-200">Unit Price</th>
+                   <th className="border-r border-gray-600 px-3 py-3 text-left font-medium text-gray-200">Pro No</th>
+                   <th className="border-r border-gray-600 px-3 py-3 text-left font-medium text-gray-200">Item Description</th>
+                   <th className="border-r border-gray-600 px-3 py-3 text-left font-medium text-gray-200">Supplier Name</th>
+                   <th className="border-r border-gray-600 px-3 py-3 text-left font-medium text-gray-200">Supplier Ref</th>
+                   <th className="border-r border-gray-600 px-3 py-3 text-center font-medium text-gray-200">Unit Price</th>
                   <th className="border-r border-gray-600 px-3 py-3 text-center font-medium text-gray-200">Rec Qty</th>
                   <th className="border-r border-gray-600 px-3 py-3 text-right font-medium text-gray-200">Item Value</th>
                   <th className="border-r border-gray-600 px-3 py-3 text-center font-medium text-gray-200">Dis %</th>
@@ -1077,7 +1080,7 @@ const StockReceive = () => {
               </thead>
               <tbody className="bg-gray-800">
                 {selectedParts.map((part, index) => (
-                  <tr key={part.id} className="border-t border-gray-700">
+                  <tr key={part.line_id || `${part.id}-${index}`} className="border-t border-gray-700">
                     <td className="border-r border-gray-700 px-3 py-2 text-white">{part.pro_no}</td>
                     <td className="border-r border-gray-700 px-3 py-2 text-white">
                       {part.item_description}
@@ -1085,8 +1088,26 @@ const StockReceive = () => {
                       <span className="text-xs text-green-400">
                         Max: {undocumentedStock[part.id]?.available_qty || 0}
                       </span>
-                    </td>
-                    <td className="border-r border-gray-700 px-3 py-2 text-center">
+                     </td>
+                     <td className="border-r border-gray-700 px-3 py-2">
+                       <input
+                         type="text"
+                         value={part.supplier_name || ''}
+                         onChange={(e) => handleItemTextChange(index, 'supplier_name', e.target.value)}
+                         className="w-36 bg-gray-700 border border-gray-600 text-white rounded px-2 py-1 text-sm"
+                         placeholder="Supplier name"
+                       />
+                     </td>
+                     <td className="border-r border-gray-700 px-3 py-2">
+                       <input
+                         type="text"
+                         value={part.sup_ref || ''}
+                         onChange={(e) => handleItemTextChange(index, 'sup_ref', e.target.value)}
+                         className="w-28 bg-gray-700 border border-gray-600 text-white rounded px-2 py-1 text-sm"
+                         placeholder="Reference"
+                       />
+                     </td>
+                     <td className="border-r border-gray-700 px-3 py-2 text-center">
                       <input
                         type="number"
                         step="0.01"
@@ -1143,9 +1164,11 @@ const StockReceive = () => {
                 {Array.from({ length: Math.max(0, 8 - selectedParts.length) }).map((_, index) => (
                   <tr key={`empty-${index}`} className="border-t border-gray-700">
                     <td className="border-r border-gray-700 px-3 py-3 h-12">&nbsp;</td>
-                    <td className="border-r border-gray-700 px-3 py-3">&nbsp;</td>
-                    <td className="border-r border-gray-700 px-3 py-3">&nbsp;</td>
-                    <td className="border-r border-gray-700 px-3 py-3">&nbsp;</td>
+                     <td className="border-r border-gray-700 px-3 py-3">&nbsp;</td>
+                     <td className="border-r border-gray-700 px-3 py-3">&nbsp;</td>
+                     <td className="border-r border-gray-700 px-3 py-3">&nbsp;</td>
+                     <td className="border-r border-gray-700 px-3 py-3">&nbsp;</td>
+                     <td className="border-r border-gray-700 px-3 py-3">&nbsp;</td>
                     <td className="border-r border-gray-700 px-3 py-3">&nbsp;</td>
                     <td className="border-r border-gray-700 px-3 py-3">&nbsp;</td>
                     <td className="border-r border-gray-700 px-3 py-3">&nbsp;</td>

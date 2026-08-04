@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FiPlus, FiSearch, FiEye, FiX, FiCalendar, FiTruck, FiUser, FiFileText, FiDollarSign, FiShoppingCart, FiPrinter } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiEye, FiX, FiCalendar, FiFileText, FiDollarSign, FiShoppingCart, FiPrinter } from 'react-icons/fi';
 
 const StockReceives = () => {
   const [stockReceives, setStockReceives] = useState([]);
@@ -30,7 +30,9 @@ const StockReceives = () => {
       const result = await window.electronAPI.database.query(
         'all',
         `SELECT sr.*, 
-          COUNT(sri.id) as items_count
+          COUNT(sri.id) as items_count,
+          GROUP_CONCAT(DISTINCT sri.supplier_name) as item_suppliers,
+          GROUP_CONCAT(DISTINCT sri.sup_ref) as item_supplier_refs
          FROM stock_receives sr
          LEFT JOIN stock_receive_items sri ON sr.id = sri.stock_receive_id
          GROUP BY sr.id
@@ -89,8 +91,8 @@ const StockReceives = () => {
 
     const filtered = stockReceives.filter(stockReceive =>
       (stockReceive.grn_no || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (stockReceive.supplier_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (stockReceive.sup_ref || '').toLowerCase().includes(searchTerm.toLowerCase())
+      (stockReceive.item_suppliers || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (stockReceive.item_supplier_refs || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     setFilteredStockReceives(filtered);
@@ -199,15 +201,13 @@ const StockReceives = () => {
 
           {/* GRN Header */}
           <div className="grn-header">
-            <div className="grn-details">
-              <div>GRN No: {printStockReceive?.grn_no}</div>
-              <div>Date: {printStockReceive?.rec_date}</div>
-              <div>Supplier Ref: {printStockReceive?.sup_ref}</div>
-            </div>
-            <div className="grn-details">
-              <div>Supplier: {printStockReceive?.supplier_name}</div>
-              <div>Lot Name: {printStockReceive?.lot_name}</div>
-              <div>Remarks: {printStockReceive?.remarks}</div>
+             <div className="grn-details">
+               <div>GRN No: {printStockReceive?.grn_no}</div>
+               <div>Date: {printStockReceive?.rec_date}</div>
+             </div>
+             <div className="grn-details">
+               <div>Lot Name: {printStockReceive?.lot_name}</div>
+               <div>Remarks: {printStockReceive?.remarks}</div>
             </div>
           </div>
 
@@ -215,9 +215,11 @@ const StockReceives = () => {
           <table className="items-table">
             <thead>
               <tr>
-                <th>Pro No</th>
-                <th>Item Description</th>
-                <th style={{ textAlign: 'center' }}>Unit Price</th>
+                 <th>Pro No</th>
+                 <th>Item Description</th>
+                 <th>Supplier</th>
+                 <th>Supplier Ref</th>
+                 <th style={{ textAlign: 'center' }}>Unit Price</th>
                 <th style={{ textAlign: 'center' }}>Rec Qty</th>
                 <th style={{ textAlign: 'right' }}>Item Value</th>
                 <th style={{ textAlign: 'center' }}>Dis %</th>
@@ -228,8 +230,10 @@ const StockReceives = () => {
             <tbody>
               {printStockReceiveItems.map((item, index) => (
                 <tr key={item.id}>
-                  <td>{item.pro_no}</td>
-                  <td>{item.item_description}</td>
+                   <td>{item.pro_no}</td>
+                   <td>{item.item_description}</td>
+                   <td>{item.supplier_name}</td>
+                   <td>{item.sup_ref}</td>
                   <td style={{ textAlign: 'center' }}>LKR {item.unit_price?.toFixed(2) || '0.00'}</td>
                   <td style={{ textAlign: 'center' }}>{item.rec_qty}</td>
                   <td style={{ textAlign: 'right' }}>LKR {item.item_value?.toFixed(2) || '0.00'}</td>
@@ -240,9 +244,11 @@ const StockReceives = () => {
               ))}
               {Array.from({ length: Math.max(0, 8 - printStockReceiveItems.length) }).map((_, index) => (
                 <tr key={`empty-${index}`}>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
+                   <td>&nbsp;</td>
+                   <td>&nbsp;</td>
+                   <td>&nbsp;</td>
+                   <td>&nbsp;</td>
+                   <td>&nbsp;</td>
                   <td>&nbsp;</td>
                   <td>&nbsp;</td>
                   <td>&nbsp;</td>
@@ -325,7 +331,7 @@ const StockReceives = () => {
             }
             
             .company-details {
-              font-size: 12px;
+              font-size: 9px;
               line-height: 1.4;
               color: black !important;
             }
@@ -360,7 +366,7 @@ const StockReceives = () => {
             .items-table th,
             .items-table td {
               border: 1px solid black;
-              padding: 8px;
+              padding: 5px;
               text-align: left;
               color: black !important;
             }
@@ -452,7 +458,7 @@ const StockReceives = () => {
           }
           
           .print-preview-content .company-details {
-            font-size: 12px;
+            font-size: 9px;
             line-height: 1.4;
             color: black;
           }
@@ -487,7 +493,7 @@ const StockReceives = () => {
           .print-preview-content .items-table th,
           .print-preview-content .items-table td {
             border: 1px solid black;
-            padding: 8px;
+            padding: 5px;
             text-align: left;
             color: black;
           }
@@ -608,21 +614,11 @@ const StockReceives = () => {
 
               <div className="space-y-2">
                 <p className="text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Supplier: </span>
-                  <span className="text-gray-900 dark:text-white">{stockReceive.supplier_name}</span>
-                </p>
-                <p className="text-sm">
                   <span className="text-gray-500 dark:text-gray-400">Receive Date: </span>
                   <span className="text-gray-900 dark:text-white">
                     {new Date(stockReceive.rec_date).toLocaleDateString()}
                   </span>
                 </p>
-                {stockReceive.sup_ref && (
-                  <p className="text-sm">
-                    <span className="text-gray-500 dark:text-gray-400">Supplier Ref: </span>
-                    <span className="text-gray-900 dark:text-white">{stockReceive.sup_ref}</span>
-                  </p>
-                )}
                 {stockReceive.lot_name && (
                   <p className="text-sm">
                     <span className="text-gray-500 dark:text-gray-400">Lot Name: </span>
@@ -701,14 +697,6 @@ const StockReceives = () => {
                         {new Date(selectedStockReceive.rec_date).toLocaleDateString()}
                       </span>
                     </div>
-                    {selectedStockReceive.sup_ref && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-600 dark:text-gray-400">Supplier Ref:</span>
-                        <span className="text-sm font-medium text-gray-900 dark:text-white">
-                          {selectedStockReceive.sup_ref}
-                        </span>
-                      </div>
-                    )}
                     <div className="flex items-center gap-2">
                       <FiDollarSign className="w-4 h-4 text-gray-400" />
                       <span className="text-sm text-gray-600 dark:text-gray-400">Total Value:</span>
@@ -733,17 +721,10 @@ const StockReceives = () => {
                   </div>
                 </div>
 
-                {/* Supplier Information */}
+                {/* Common GRN Information */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Supplier Information</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Common GRN Details</h3>
                   <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <FiUser className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm text-gray-600 dark:text-gray-400">Supplier:</span>
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        {selectedStockReceive.supplier_name}
-                      </span>
-                    </div>
                     {selectedStockReceive.lot_name && (
                       <div className="flex items-center gap-2">
                         <FiShoppingCart className="w-4 h-4 text-gray-400" />
@@ -777,9 +758,15 @@ const StockReceives = () => {
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                               Pro No
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                              Description
-                            </th>
+                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                               Description
+                             </th>
+                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                               Supplier
+                             </th>
+                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                               Supplier Ref
+                             </th>
                             <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                               Unit Price
                             </th>
@@ -813,8 +800,14 @@ const StockReceives = () => {
                                     {item.part_number}
                                   </p>
                                 )}
-                              </td>
-                              <td className="px-4 py-4 text-sm text-right text-gray-900 dark:text-white">
+                               </td>
+                               <td className="px-4 py-4 text-sm text-gray-900 dark:text-white">
+                                 {item.supplier_name || '-'}
+                               </td>
+                               <td className="px-4 py-4 text-sm text-gray-900 dark:text-white">
+                                 {item.sup_ref || '-'}
+                               </td>
+                               <td className="px-4 py-4 text-sm text-right text-gray-900 dark:text-white">
                                 LKR {item.unit_price?.toFixed(2) || '0.00'}
                               </td>
                               <td className="px-4 py-4 text-sm text-right text-gray-900 dark:text-white">
@@ -837,7 +830,7 @@ const StockReceives = () => {
                         </tbody>
                         <tfoot className="bg-gray-100 dark:bg-gray-600">
                           <tr>
-                            <td colSpan="4" className="px-4 py-3 text-right font-medium text-gray-900 dark:text-white">
+                            <td colSpan="6" className="px-4 py-3 text-right font-medium text-gray-900 dark:text-white">
                               Total:
                             </td>
                             <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-white">

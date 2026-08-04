@@ -6,19 +6,10 @@ export const getLocalDate = (date = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
-const mergeDistinctValues = (existingValue, newValue) => {
-  const values = `${existingValue || ''};${newValue || ''}`
-    .split(';')
-    .map(value => value.trim())
-    .filter(Boolean);
-
-  return [...new Set(values)].join('; ');
-};
-
 export const findStockReceiveByDate = (database, receiveDate) => (
   database.query(
     'get',
-    `SELECT id, grn_no, sup_ref, supplier_name, lot_name, remarks
+    `SELECT id, grn_no, lot_name, remarks
      FROM stock_receives
      WHERE DATE(rec_date) = ?
      ORDER BY created_at ASC, id ASC
@@ -44,14 +35,12 @@ export const saveDailyStockReceive = async ({
     await database.query(
       'run',
       `UPDATE stock_receives
-       SET sup_ref = ?, supplier_name = ?, lot_name = ?, remarks = ?,
+       SET lot_name = ?, remarks = ?,
            updated_at = datetime('now','localtime')
        WHERE id = ?`,
       [
-        mergeDistinctValues(existingReceive.sup_ref, formData.sup_ref),
-        mergeDistinctValues(existingReceive.supplier_name, formData.supplier_name),
-        mergeDistinctValues(existingReceive.lot_name, formData.lot_name),
-        mergeDistinctValues(existingReceive.remarks, formData.remarks),
+        formData.lot_name,
+        formData.remarks,
         stockReceiveId
       ]
     );
@@ -64,14 +53,12 @@ export const saveDailyStockReceive = async ({
     const result = await database.query(
       'run',
       `INSERT INTO stock_receives (
-        grn_no, rec_date, sup_ref, supplier_name, lot_name,
-        remarks, total_value, discount_value, final_value
-      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0)`,
+        grn_no, rec_date, lot_name, remarks,
+        total_value, discount_value, final_value
+      ) VALUES (?, ?, ?, ?, 0, 0, 0)`,
       [
         grnNo,
         formData.rec_date,
-        formData.sup_ref,
-        formData.supplier_name,
         formData.lot_name,
         formData.remarks
       ]
@@ -88,14 +75,16 @@ export const saveDailyStockReceive = async ({
       'run',
       `INSERT INTO stock_receive_items (
         stock_receive_id, part_id, pro_no, item_description,
-        unit_price, rec_qty, item_value, dis_percent,
-        discount_value, final_value
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        supplier_name, sup_ref, unit_price, rec_qty, item_value,
+        dis_percent, discount_value, final_value
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         stockReceiveId,
         part.id,
         part.pro_no,
         part.item_description,
+        part.supplier_name,
+        part.sup_ref,
         part.unit_price,
         part.rec_qty,
         part.item_value,
@@ -105,6 +94,14 @@ export const saveDailyStockReceive = async ({
       ]
     );
 
+  }
+
+  const quantitiesByPart = selectedParts.reduce((quantities, part) => {
+    quantities.set(part.id, (quantities.get(part.id) || 0) + part.rec_qty);
+    return quantities;
+  }, new Map());
+
+  for (const [partId, quantity] of quantitiesByPart) {
     await database.query(
       'run',
       `UPDATE stock_movements
@@ -119,7 +116,7 @@ export const saveDailyStockReceive = async ({
          ORDER BY created_at ASC
          LIMIT ?
        )`,
-      [grnNo, part.id, part.id, part.rec_qty]
+      [grnNo, partId, partId, quantity]
     );
   }
 

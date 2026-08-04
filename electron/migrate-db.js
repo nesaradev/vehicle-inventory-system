@@ -171,6 +171,8 @@ async function migrateBetterSqlite3(db) {
         part_id INTEGER,
         pro_no TEXT,
         item_description TEXT,
+        supplier_name TEXT,
+        sup_ref TEXT,
         unit_price REAL,
         rec_qty INTEGER,
         item_value REAL,
@@ -181,6 +183,20 @@ async function migrateBetterSqlite3(db) {
         FOREIGN KEY (part_id) REFERENCES parts (id)
       )
     `);
+    safeAlterTableSync(db, 'stock_receive_items', 'supplier_name TEXT');
+    safeAlterTableSync(db, 'stock_receive_items', 'sup_ref TEXT');
+    db.prepare(`
+      UPDATE stock_receive_items
+      SET supplier_name = COALESCE(NULLIF(supplier_name, ''), (
+            SELECT supplier_name FROM stock_receives
+            WHERE stock_receives.id = stock_receive_items.stock_receive_id
+          )),
+          sup_ref = COALESCE(NULLIF(sup_ref, ''), (
+            SELECT sup_ref FROM stock_receives
+            WHERE stock_receives.id = stock_receive_items.stock_receive_id
+          ))
+      WHERE supplier_name IS NULL OR supplier_name = '' OR sup_ref IS NULL OR sup_ref = ''
+    `).run();
     console.log('✅ Stock receive items table created/verified');
   } catch (error) {
     console.log('⚠️ Could not create stock_receive_items table:', error.message);
@@ -313,6 +329,8 @@ async function migrateSqliteWrapper(db) {
         part_id INTEGER,
         pro_no TEXT,
         item_description TEXT,
+        supplier_name TEXT,
+        sup_ref TEXT,
         unit_price REAL,
         rec_qty INTEGER,
         item_value REAL,
@@ -322,6 +340,20 @@ async function migrateSqliteWrapper(db) {
         FOREIGN KEY (stock_receive_id) REFERENCES stock_receives (id),
         FOREIGN KEY (part_id) REFERENCES parts (id)
       )
+    `);
+    await safeAlterTableAsync(db, 'stock_receive_items', 'supplier_name TEXT');
+    await safeAlterTableAsync(db, 'stock_receive_items', 'sup_ref TEXT');
+    await db.run(`
+      UPDATE stock_receive_items
+      SET supplier_name = COALESCE(NULLIF(supplier_name, ''), (
+            SELECT supplier_name FROM stock_receives
+            WHERE stock_receives.id = stock_receive_items.stock_receive_id
+          )),
+          sup_ref = COALESCE(NULLIF(sup_ref, ''), (
+            SELECT sup_ref FROM stock_receives
+            WHERE stock_receives.id = stock_receive_items.stock_receive_id
+          ))
+      WHERE supplier_name IS NULL OR supplier_name = '' OR sup_ref IS NULL OR sup_ref = ''
     `);
     console.log('✅ Stock receive items table created/verified');
   } catch (error) {
