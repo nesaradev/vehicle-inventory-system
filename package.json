@@ -29,6 +29,10 @@
   ],
   "author": "Your Name",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.16.0 <23",
+    "npm": ">=10 <12"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "better-sqlite3": "^11.10.0",

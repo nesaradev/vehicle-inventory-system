@@ -21,8 +21,12 @@ A modern, feature-rich inventory management system for auto parts shops built wi
 
 ### Prerequisites
 
-- Node.js (v14 or higher)
-- npm or yarn
+- Node.js 22.16.0 or a newer Node.js 22 release (Electron 37 uses Node.js 22)
+- npm 10 or 11
+
+Node.js 24 is not supported by the pinned native database dependency. If you use
+a Node version manager, run `nvm use` from the project directory before installing
+dependencies.
 
 ### Installation
 
