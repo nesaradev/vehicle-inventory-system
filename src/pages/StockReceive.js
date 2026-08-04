@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiArrowLeft, FiSave, FiPlus, FiTrash2, FiSearch, FiPrinter, FiEye, FiX } from 'react-icons/fi';
+import {
+  findStockReceiveByDate,
+  getLocalDate,
+  saveDailyStockReceive
+} from '../services/stockReceiveService';
 
 const StockReceive = () => {
   const navigate = useNavigate();
@@ -17,7 +22,7 @@ const StockReceive = () => {
 
   const [formData, setFormData] = useState({
     grn_no: '',
-    rec_date: new Date().toISOString().split('T')[0],
+    rec_date: getLocalDate(),
     sup_ref: '',
     supplier_name: '',
     lot_name: '',
@@ -56,7 +61,7 @@ const StockReceive = () => {
         // Update date to current date but keep other data
         const updatedFormData = {
           ...draftData.formData,
-          rec_date: new Date().toISOString().split('T')[0]
+          rec_date: getLocalDate()
         };
         setFormData(updatedFormData);
         setSelectedParts(draftData.selectedParts || []);
@@ -89,7 +94,7 @@ const StockReceive = () => {
     // Reset form to initial state
     setFormData({
       grn_no: '',
-      rec_date: new Date().toISOString().split('T')[0],
+      rec_date: getLocalDate(),
       sup_ref: '',
       supplier_name: '',
       lot_name: '',
@@ -127,7 +132,7 @@ const StockReceive = () => {
 
   const checkTodaysReceiveCount = async () => {
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDate();
       const result = await window.electronAPI.database.query(
         'get',
         `SELECT COUNT(*) as count FROM stock_receives WHERE DATE(rec_date) = ?`,
@@ -172,7 +177,7 @@ const StockReceive = () => {
 
   useEffect(() => {
     fetchParts();
-    generateGRNNo();
+    generateGRNNo(getLocalDate());
     checkTodaysReceiveCount();
     fetchUndocumentedStock();
     
@@ -227,23 +232,17 @@ const StockReceive = () => {
     return () => clearTimeout(timeoutId);
   }, [formData, selectedParts]);
 
-  const generateGRNNo = async () => {
+  const generateGRNNo = async (receiveDate = getLocalDate()) => {
     try {
-      const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
-      
-      // Check if a GRN already exists for today
-      const existingGRN = await window.electronAPI.database.query(
-        'get',
-        `SELECT grn_no FROM stock_receives WHERE DATE(rec_date) = ? ORDER BY created_at DESC LIMIT 1`,
-        [today]
+      const existingGRN = await findStockReceiveByDate(
+        window.electronAPI.database,
+        receiveDate
       );
       
       if (existingGRN) {
-        // Use existing GRN for today
         setFormData(prev => ({ ...prev, grn_no: existingGRN.grn_no }));
-        console.log('Using existing GRN for today:', existingGRN.grn_no);
+        console.log('Using existing GRN for receive date:', existingGRN.grn_no);
       } else {
-        // Generate new GRN for today
         const result = await window.electronAPI.database.query(
           'get',
           `SELECT current_value FROM counters WHERE id = 'grn_no'`
@@ -264,55 +263,39 @@ const StockReceive = () => {
         // Show preview without updating the counter
         const grnNo = `GRN${nextValue.toString().padStart(6, '0')}`;
         setFormData(prev => ({ ...prev, grn_no: grnNo }));
-        console.log('Generated new GRN for today:', grnNo);
+        console.log('Generated GRN preview for receive date:', grnNo);
       }
     } catch (error) {
       console.error('Error generating GRN No:', error);
     }
   };
 
-  const generateActualGRNNo = async () => {
+  const generateNewGRNNo = async () => {
     try {
-      const today = new Date().toISOString().split('T')[0];
-      
-      // Check if a GRN already exists for today
-      const existingGRN = await window.electronAPI.database.query(
+      const result = await window.electronAPI.database.query(
         'get',
-        `SELECT grn_no FROM stock_receives WHERE DATE(rec_date) = ? ORDER BY created_at DESC LIMIT 1`,
-        [today]
+        `SELECT current_value FROM counters WHERE id = 'grn_no'`
       );
-      
-      if (existingGRN) {
-        // Use existing GRN for today - don't increment counter
-        console.log('Using existing GRN for today:', existingGRN.grn_no);
-        return existingGRN.grn_no;
-      } else {
-        // Generate new GRN for today and increment counter
-        const result = await window.electronAPI.database.query(
-          'get',
-          `SELECT current_value FROM counters WHERE id = 'grn_no'`
-        );
 
-        let nextValue;
-        if (result && result.current_value !== undefined) {
-          nextValue = result.current_value + 1;
-        } else {
-          nextValue = 1;
-        }
-
-        // Actually update the counter
+      if (!result || result.current_value === undefined) {
         await window.electronAPI.database.query(
           'run',
-          `UPDATE counters SET current_value = ? WHERE id = 'grn_no'`,
-          [nextValue]
+          `INSERT OR IGNORE INTO counters (id, current_value) VALUES ('grn_no', 0)`
         );
-
-        const grnNo = `GRN${nextValue.toString().padStart(6, '0')}`;
-        console.log('Generated new GRN for today:', grnNo);
-        return grnNo;
       }
+
+      const nextValue = (result?.current_value || 0) + 1;
+      await window.electronAPI.database.query(
+        'run',
+        `UPDATE counters SET current_value = ? WHERE id = 'grn_no'`,
+        [nextValue]
+      );
+
+      const grnNo = `GRN${nextValue.toString().padStart(6, '0')}`;
+      console.log('Generated new GRN:', grnNo);
+      return grnNo;
     } catch (error) {
-      console.error('Error generating actual GRN No:', error);
+      console.error('Error generating new GRN No:', error);
       return null;
     }
   };
@@ -458,89 +441,23 @@ const StockReceive = () => {
 
     setLoading(true);
     try {
-      // Generate the actual GRN number only when saving
-      const actualGRNNo = await generateActualGRNNo();
-      if (!actualGRNNo) {
-        throw new Error('Failed to generate GRN number');
-      }
+      const saveResult = await saveDailyStockReceive({
+        database: window.electronAPI.database,
+        formData,
+        selectedParts,
+        generateNewGRNNo
+      });
 
-      // Save the stock receive record to database
-      const result = await window.electronAPI.database.query(
-        'run',
-        `INSERT INTO stock_receives (
-          grn_no, rec_date, sup_ref, supplier_name, lot_name,
-          remarks, total_value, discount_value, final_value
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          actualGRNNo,
-          formData.rec_date,
-          formData.sup_ref,
-          formData.supplier_name,
-          formData.lot_name,
-          formData.remarks,
-          formData.total_value,
-          formData.discount_value,
-          formData.final_value
-        ]
-      );
+      setFormData(prev => ({ ...prev, grn_no: saveResult.grnNo }));
+      clearDraft();
+      checkTodaysReceiveCount();
+      fetchUndocumentedStock();
 
-      if (result && (result.lastInsertRowid || result.lastID)) {
-        const stockReceiveId = result.lastInsertRowid || result.lastID;
-
-        // Save stock receive items and update part stock
-        for (const part of selectedParts) {
-          // Save the item
-          await window.electronAPI.database.query(
-            'run',
-            `INSERT INTO stock_receive_items (
-              stock_receive_id, part_id, pro_no, item_description,
-              unit_price, rec_qty, item_value, dis_percent,
-              discount_value, final_value
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              stockReceiveId,
-              part.id,
-              part.pro_no,
-              part.item_description,
-              part.unit_price,
-              part.rec_qty,
-              part.item_value,
-              part.dis_percent,
-              part.discount_value,
-              part.final_value
-            ]
-          );
-
-          // Mark stock movements as documented with this GRN
-          await window.electronAPI.database.query(
-            'run',
-            `UPDATE stock_movements 
-             SET grn_documented = 1, grn_no = ?
-             WHERE part_id = ? 
-             AND movement_type = 'IN' 
-             AND (grn_documented = 0 OR grn_documented IS NULL)
-             AND id IN (
-               SELECT id FROM stock_movements 
-               WHERE part_id = ? AND movement_type = 'IN' 
-               AND (grn_documented = 0 OR grn_documented IS NULL)
-               ORDER BY created_at ASC 
-               LIMIT ?
-             )`,
-            [actualGRNNo, part.id, part.id, part.rec_qty]
-          );
-        }
-
-        // Update the form data with the actual GRN number
-        setFormData(prev => ({ ...prev, grn_no: actualGRNNo }));
-
-        // Clear draft after successful save
-        clearDraft();
-        // Update today's receive count and refresh undocumented stock
-        checkTodaysReceiveCount();
-        fetchUndocumentedStock();
-        window.electronAPI.notification.show('Success', `Stock received successfully - GRN #${actualGRNNo}`);
-        navigate('/stock-receives');
-      }
+      const successMessage = saveResult.appended
+        ? `${saveResult.itemsAdded} item(s) added to existing GRN #${saveResult.grnNo}`
+        : `Stock received successfully - GRN #${saveResult.grnNo}`;
+      window.electronAPI.notification.show('Success', successMessage);
+      navigate('/stock-receives');
     } catch (error) {
       console.error('Error saving stock receive:', error);
       if (error.message?.includes('UNIQUE constraint failed')) {
@@ -990,7 +907,7 @@ const StockReceive = () => {
             <div>
               <h3 className="text-blue-400 font-semibold">Important: Daily GRN System with Stock Validation</h3>
               <p className="text-blue-300 text-sm mt-1">
-                One GRN number per day for all stock received on that date. <strong>GRN quantities must match stock added through "Add Stock" function.</strong> 
+                One GRN number per day for all stock received on that date. Saving again on the same date appends every selected item to the existing GRN. <strong>GRN quantities must match stock added through "Add Stock" function.</strong>
                 You can only document stock that has been previously added but not yet documented in a GRN. The system will prevent saving if quantities exceed available undocumented stock.
               </p>
             </div>
@@ -1018,7 +935,11 @@ const StockReceive = () => {
             <input
               type="date"
               value={formData.rec_date}
-              onChange={(e) => setFormData(prev => ({ ...prev, rec_date: e.target.value }))}
+              onChange={(e) => {
+                const receiveDate = e.target.value;
+                setFormData(prev => ({ ...prev, rec_date: receiveDate }));
+                generateGRNNo(receiveDate);
+              }}
               className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
