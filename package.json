@@ -82,7 +82,6 @@
       "!**/test/*",
       "!node_modules/**/build/node_gyp_bins/**/*"
     ],
-    "includeSubNodeModules": true,
     "extraMetadata": {
       "main": "build/electron/main.js"
     },
@@ -90,6 +89,7 @@
       "output": "dist-production"
     },
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "nsis",
@@ -97,9 +97,7 @@
             "x64"
           ]
         }
-      ],
-      "sign": false,
-      "signingHashAlgorithms": []
+      ]
     },
     "nodeGypRebuild": false,
     "buildDependenciesFromSource": false,
