@@ -433,6 +433,7 @@ const createTables = async () => {
           final_selling_price REAL,
           notes TEXT,
           grn_documented BOOLEAN DEFAULT 0,
+          grn_documented_quantity INTEGER DEFAULT 0,
           grn_no TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (part_id) REFERENCES parts(id)

@@ -18,6 +18,58 @@ export const findStockReceiveByDate = (database, receiveDate) => (
   )
 );
 
+export const documentStockMovementQuantity = async ({
+  database,
+  partId,
+  quantity,
+  grnNo
+}) => {
+  const movements = await database.query(
+    'all',
+    `SELECT id, quantity,
+       COALESCE(
+         grn_documented_quantity,
+         CASE WHEN grn_documented = 1 THEN quantity ELSE 0 END
+       ) AS documented_quantity
+     FROM stock_movements
+     WHERE part_id = ?
+       AND movement_type = 'IN'
+       AND quantity > COALESCE(
+         grn_documented_quantity,
+         CASE WHEN grn_documented = 1 THEN quantity ELSE 0 END
+       )
+     ORDER BY created_at ASC, id ASC`,
+    [partId]
+  );
+
+  let remainingQuantity = quantity;
+
+  for (const movement of movements || []) {
+    if (remainingQuantity <= 0) break;
+
+    const documentedQuantity = Number(movement.documented_quantity) || 0;
+    const availableQuantity = Number(movement.quantity) - documentedQuantity;
+    const quantityToDocument = Math.min(remainingQuantity, availableQuantity);
+    const newDocumentedQuantity = documentedQuantity + quantityToDocument;
+
+    await database.query(
+      'run',
+      `UPDATE stock_movements
+       SET grn_documented_quantity = ?,
+           grn_documented = CASE WHEN ? >= quantity THEN 1 ELSE 0 END,
+           grn_no = COALESCE(NULLIF(grn_no, ''), ?)
+       WHERE id = ?`,
+      [newDocumentedQuantity, newDocumentedQuantity, grnNo, movement.id]
+    );
+
+    remainingQuantity -= quantityToDocument;
+  }
+
+  if (remainingQuantity > 0) {
+    throw new Error(`Only ${quantity - remainingQuantity} of ${quantity} stock units were available for GRN documentation`);
+  }
+};
+
 export const saveDailyStockReceive = async ({
   database,
   formData,
@@ -102,22 +154,7 @@ export const saveDailyStockReceive = async ({
   }, new Map());
 
   for (const [partId, quantity] of quantitiesByPart) {
-    await database.query(
-      'run',
-      `UPDATE stock_movements
-       SET grn_documented = 1, grn_no = ?
-       WHERE part_id = ?
-       AND movement_type = 'IN'
-       AND (grn_documented = 0 OR grn_documented IS NULL)
-       AND id IN (
-         SELECT id FROM stock_movements
-         WHERE part_id = ? AND movement_type = 'IN'
-         AND (grn_documented = 0 OR grn_documented IS NULL)
-         ORDER BY created_at ASC
-         LIMIT ?
-       )`,
-      [grnNo, partId, partId, quantity]
-    );
+    await documentStockMovementQuantity({ database, partId, quantity, grnNo });
   }
 
   await database.query(

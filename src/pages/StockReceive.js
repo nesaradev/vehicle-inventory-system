@@ -153,13 +153,21 @@ const StockReceive = () => {
           sm.part_id,
           p.name,
           p.part_number,
-          SUM(sm.quantity) as available_qty
+          SUM(
+            sm.quantity - COALESCE(
+              sm.grn_documented_quantity,
+              CASE WHEN sm.grn_documented = 1 THEN sm.quantity ELSE 0 END
+            )
+          ) as available_qty
          FROM stock_movements sm
          JOIN parts p ON sm.part_id = p.id
-         WHERE sm.movement_type = 'IN' 
-         AND (sm.grn_documented = 0 OR sm.grn_documented IS NULL)
+         WHERE sm.movement_type = 'IN'
+         AND sm.quantity > COALESCE(
+           sm.grn_documented_quantity,
+           CASE WHEN sm.grn_documented = 1 THEN sm.quantity ELSE 0 END
+         )
          GROUP BY sm.part_id, p.name, p.part_number
-         HAVING SUM(sm.quantity) > 0`
+         HAVING available_qty > 0`
       );
       
       const undocumented = {};

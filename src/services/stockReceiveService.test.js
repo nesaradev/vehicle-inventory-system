@@ -1,4 +1,8 @@
-import { getLocalDate, saveDailyStockReceive } from './stockReceiveService';
+import {
+  documentStockMovementQuantity,
+  getLocalDate,
+  saveDailyStockReceive
+} from './stockReceiveService';
 
 const createPart = (id, finalValue, supplierName = 'Supplier A', supplierRef = '') => ({
   id,
@@ -27,6 +31,9 @@ describe('saveDailyStockReceive', () => {
             lot_name: '',
             remarks: ''
           };
+        }
+        if (type === 'all' && sql.includes('FROM stock_movements')) {
+          return [{ id: 100, quantity: 2, documented_quantity: 0 }];
         }
         return { changes: 1 };
       })
@@ -78,6 +85,9 @@ describe('saveDailyStockReceive', () => {
         calls.push({ type, sql, params });
         if (type === 'get') return null;
         if (sql.includes('INSERT INTO stock_receives')) return { lastInsertRowid: 9 };
+        if (type === 'all' && sql.includes('FROM stock_movements')) {
+          return [{ id: 101, quantity: 1, documented_quantity: 0 }];
+        }
         return { changes: 1 };
       })
     };
@@ -97,6 +107,50 @@ describe('saveDailyStockReceive', () => {
     expect(result.grnNo).toBe('GRN000008');
     expect(calls.filter(call => call.sql.includes('INSERT INTO stock_receives'))).toHaveLength(1);
     expect(calls.filter(call => call.sql.includes('INSERT INTO stock_receive_items'))).toHaveLength(1);
+  });
+});
+
+test('keeps the unentered portion of a stock movement available for a later GRN save', async () => {
+  const movement = { id: 1, quantity: 40, documented_quantity: 0, grn_documented: 0 };
+  const database = {
+    query: jest.fn(async (type, sql, params) => {
+      if (type === 'all' && sql.includes('FROM stock_movements')) {
+        const available = movement.quantity - movement.documented_quantity;
+        return available > 0 ? [{ ...movement }] : [];
+      }
+      if (type === 'run' && sql.includes('UPDATE stock_movements')) {
+        movement.documented_quantity = params[0];
+        movement.grn_documented = params[1] >= movement.quantity ? 1 : 0;
+        return { changes: 1 };
+      }
+      return { changes: 1 };
+    })
+  };
+
+  await documentStockMovementQuantity({
+    database,
+    partId: 1,
+    quantity: 20,
+    grnNo: 'GRN000002'
+  });
+
+  expect(movement).toMatchObject({
+    quantity: 40,
+    documented_quantity: 20,
+    grn_documented: 0
+  });
+
+  await documentStockMovementQuantity({
+    database,
+    partId: 1,
+    quantity: 20,
+    grnNo: 'GRN000002'
+  });
+
+  expect(movement).toMatchObject({
+    quantity: 40,
+    documented_quantity: 40,
+    grn_documented: 1
   });
 });
 

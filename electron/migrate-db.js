@@ -26,6 +26,10 @@ const migrateDatabase = async () => {
       await migrateSqliteWrapper(db);
     }
 
+    if (db.save && typeof db.save === 'function') {
+      db.save();
+    }
+
     console.log('✅ Database migration completed successfully');
   } catch (error) {
     console.error('❌ Migration error:', error);
@@ -55,6 +59,25 @@ async function migrateBetterSqlite3(db) {
   // Add GRN tracking to stock movements
   safeAlterTableSync(db, 'stock_movements', 'grn_documented BOOLEAN DEFAULT 0');
   safeAlterTableSync(db, 'stock_movements', 'grn_no TEXT');
+  const addedDocumentedQuantity = safeAlterTableSync(
+    db,
+    'stock_movements',
+    'grn_documented_quantity INTEGER DEFAULT 0'
+  );
+  const needsDocumentedQuantityBackfill = addedDocumentedQuantity || Boolean(
+    db.prepare(`
+      SELECT 1
+      FROM stock_movements
+      WHERE movement_type = 'IN'
+        AND quantity > 0
+        AND grn_documented = 1
+        AND COALESCE(grn_documented_quantity, 0) = 0
+      LIMIT 1
+    `).get()
+  );
+  if (needsDocumentedQuantityBackfill) {
+    backfillDocumentedQuantitiesSync(db);
+  }
   
   // Update existing timestamps to correct timezone
   try {
@@ -216,6 +239,25 @@ async function migrateSqliteWrapper(db) {
   // Add GRN tracking to stock movements
   await safeAlterTableAsync(db, 'stock_movements', 'grn_documented BOOLEAN DEFAULT 0');
   await safeAlterTableAsync(db, 'stock_movements', 'grn_no TEXT');
+  const addedDocumentedQuantity = await safeAlterTableAsync(
+    db,
+    'stock_movements',
+    'grn_documented_quantity INTEGER DEFAULT 0'
+  );
+  const needsDocumentedQuantityBackfill = addedDocumentedQuantity || Boolean(
+    await db.get(`
+      SELECT 1
+      FROM stock_movements
+      WHERE movement_type = 'IN'
+        AND quantity > 0
+        AND grn_documented = 1
+        AND COALESCE(grn_documented_quantity, 0) = 0
+      LIMIT 1
+    `)
+  );
+  if (needsDocumentedQuantityBackfill) {
+    await backfillDocumentedQuantitiesAsync(db);
+  }
   
   // Add updated_at column to parts table
   await safeAlterTableAsync(db, 'parts', 'updated_at DATETIME DEFAULT (datetime(\'now\',\'localtime\'))');
@@ -373,15 +415,17 @@ function safeAlterTableSync(db, table, column) {
     
     if (columnExists) {
       console.log(`⚠️  Column ${columnName} already exists in ${table}`);
-      return;
+      return false;
     }
     
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column}`);
     console.log(`✅ Added column ${column} to ${table}`);
+    return true;
   } catch (error) {
     if (!error.message.includes('duplicate column')) {
       console.log(`⚠️  ${column} column issue:`, error.message);
     }
+    return false;
   }
 }
 
@@ -397,16 +441,98 @@ async function safeAlterTableAsync(db, table, column) {
     
     if (columnExists) {
       console.log(`⚠️  Column ${columnName} already exists in ${table}`);
-      return;
+      return false;
     }
     
     await db.run(`ALTER TABLE ${table} ADD COLUMN ${column}`);
     console.log(`✅ Added column ${column} to ${table}`);
+    return true;
   } catch (error) {
     if (!error.message.includes('duplicate column')) {
       console.log(`⚠️  ${column} column issue:`, error.message);
     }
+    return false;
   }
+}
+
+function calculateDocumentedQuantities(movements, receiveTotals) {
+  const remainingByReceive = new Map(
+    receiveTotals.map(row => [`${row.part_id}:${row.grn_no}`, Number(row.documented_qty) || 0])
+  );
+
+  return movements.map(movement => {
+    const movementQuantity = Number(movement.quantity) || 0;
+    const receiveKey = `${movement.part_id}:${movement.grn_no}`;
+    const hasReceiveTotal = movement.grn_no && remainingByReceive.has(receiveKey);
+    const remainingForReceive = hasReceiveTotal ? remainingByReceive.get(receiveKey) : 0;
+    const documentedQuantity = hasReceiveTotal
+      ? Math.min(movementQuantity, Math.max(0, remainingForReceive))
+      : (movement.grn_documented ? movementQuantity : 0);
+
+    if (hasReceiveTotal) {
+      remainingByReceive.set(receiveKey, Math.max(0, remainingForReceive - documentedQuantity));
+    }
+
+    return { id: movement.id, quantity: movementQuantity, documentedQuantity };
+  });
+}
+
+function backfillDocumentedQuantitiesSync(db) {
+  const movements = db.prepare(`
+    SELECT id, part_id, quantity, grn_documented, grn_no
+    FROM stock_movements
+    WHERE movement_type = 'IN'
+    ORDER BY created_at ASC, id ASC
+  `).all();
+  const receiveTotals = db.prepare(`
+    SELECT sri.part_id, sr.grn_no, SUM(sri.rec_qty) AS documented_qty
+    FROM stock_receive_items sri
+    JOIN stock_receives sr ON sr.id = sri.stock_receive_id
+    GROUP BY sri.part_id, sr.grn_no
+  `).all();
+  const update = db.prepare(`
+    UPDATE stock_movements
+    SET grn_documented_quantity = ?, grn_documented = ?
+    WHERE id = ?
+  `);
+
+  for (const allocation of calculateDocumentedQuantities(movements, receiveTotals)) {
+    update.run([
+      allocation.documentedQuantity,
+      allocation.documentedQuantity >= allocation.quantity ? 1 : 0,
+      allocation.id
+    ]);
+  }
+  console.log('✅ Rebuilt partial GRN documentation quantities');
+}
+
+async function backfillDocumentedQuantitiesAsync(db) {
+  const movements = await db.all(`
+    SELECT id, part_id, quantity, grn_documented, grn_no
+    FROM stock_movements
+    WHERE movement_type = 'IN'
+    ORDER BY created_at ASC, id ASC
+  `);
+  const receiveTotals = await db.all(`
+    SELECT sri.part_id, sr.grn_no, SUM(sri.rec_qty) AS documented_qty
+    FROM stock_receive_items sri
+    JOIN stock_receives sr ON sr.id = sri.stock_receive_id
+    GROUP BY sri.part_id, sr.grn_no
+  `);
+
+  for (const allocation of calculateDocumentedQuantities(movements, receiveTotals)) {
+    await db.run(
+      `UPDATE stock_movements
+       SET grn_documented_quantity = ?, grn_documented = ?
+       WHERE id = ?`,
+      [
+        allocation.documentedQuantity,
+        allocation.documentedQuantity >= allocation.quantity ? 1 : 0,
+        allocation.id
+      ]
+    );
+  }
+  console.log('✅ Rebuilt partial GRN documentation quantities');
 }
 
 module.exports = { migrateDatabase };
