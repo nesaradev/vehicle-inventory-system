@@ -7,7 +7,7 @@
   "scripts": {
     "start": "concurrently --kill-others \"npm run react-start\" \"wait-on http://localhost:3001 && npm run electron-start\"",
     "react-start": "cross-env BROWSER=none GENERATE_SOURCEMAP=false react-scripts start",
-    "electron-start": "electron .",
+    "electron-start": "node scripts/start-electron.js",
     "dev": "npm run start",
     "build": "react-scripts build && node scripts/copy-electron.js",
     "test": "react-scripts test",
