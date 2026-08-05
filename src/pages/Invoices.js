@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FiPlus, FiSearch, FiEye, FiX, FiCalendar, FiTruck, FiUser, FiFileText, FiDollarSign, FiPrinter } from 'react-icons/fi';
+import InvoicePrintHeader from '../components/InvoicePrintHeader';
 
 const Invoices = () => {
   const [invoices, setInvoices] = useState([]);
@@ -140,20 +141,7 @@ const Invoices = () => {
         
         <div className="print-preview-content">
           {/* Company Header */}
-          <div className="company-header">
-            <div className="brand-badges">
-              <img src="/badges/Volkswagen.png" alt="Volkswagen" />
-              <img src="/badges/Audi.jpg" alt="Audi" />
-              <img src="/badges/Seat.png" alt="Seat" />
-              <img src="/badges/Skoda.jpg" alt="Skoda" />
-            </div>
-            <div className="company-name">EU Auto Parts</div>
-            <div className="company-details">
-              166/3, Kaolin Refinery Road, Werahera, Boralesgamuwa, Sri Lanka.<br/>
-              Tel: 0706333555<br/>
-              E-mail: euautoparts@gmail.com &nbsp;&nbsp;&nbsp;&nbsp; Reg No. - J 28994
-            </div>
-          </div>
+          <InvoicePrintHeader />
 
           {/* Invoice Title */}
           <div className="invoice-title">INVOICE</div>
@@ -277,19 +265,6 @@ const Invoices = () => {
               margin-bottom: 30px;
               border-bottom: 2px solid black;
               padding-bottom: 20px;
-            }
-            
-            .brand-badges {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              margin-bottom: 16px;
-            }
-            
-            .brand-badges img {
-              height: 50px;
-              object-fit: contain;
-              max-width: 120px;
             }
             
             .company-name {
@@ -417,19 +392,6 @@ const Invoices = () => {
             margin-bottom: 30px;
             border-bottom: 2px solid black;
             padding-bottom: 20px;
-          }
-          
-          .print-preview-content .brand-badges {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-          }
-          
-          .print-preview-content .brand-badges img {
-            height: 50px;
-            object-fit: contain;
-            max-width: 120px;
           }
           
           .print-preview-content .company-name {

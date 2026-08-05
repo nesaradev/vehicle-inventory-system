@@ -49,9 +49,10 @@ const JobCardPrint = ({ jobData, selectedParts = [] }) => {
         <p style={{
           margin: '1px 0',
           fontSize: '8px',
-          lineHeight: '1.2'
+          lineHeight: '1.2',
+          textAlign: 'center'
         }}>
-          E-mail: vishwa.motors@yahoo.com &nbsp;&nbsp;&nbsp;&nbsp; PV No. - 00204336
+          E-mail: vishwa.motors@yahoo.com
         </p>
       </div>
 

@@ -25,6 +25,8 @@ test('prints only estimate rows and leaves the manual total empty', () => {
 
   expect(markup).toContain('186/3, Kaolin refinery, Road, Werahera, Boralesgamuwa Sri Lanka');
   expect(markup).toContain('Tel: 070 633 3555');
+  expect(markup).toContain('E-mail: vishwa.motors@yahoo.com');
+  expect(markup).not.toContain('PV No.');
   expect(markup).toContain('WHEEL ALIGNMENT - Inspect and adjust');
   expect(markup).not.toContain('test5');
   expect(markup).not.toContain('Rs.');

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiArrowLeft, FiSave, FiPrinter, FiPlus, FiTrash2, FiSearch, FiX, FiEye } from 'react-icons/fi';
+import InvoicePrintHeader from '../components/InvoicePrintHeader';
 
 const Invoice = () => {
   const navigate = useNavigate();
@@ -775,20 +776,7 @@ const Invoice = () => {
         
         <div className="print-preview-content">
           {/* Company Header */}
-          <div className="company-header">
-            <div className="brand-badges">
-              <img src="/badges/Volkswagen.png" alt="Volkswagen" />
-              <img src="/badges/Audi.jpg" alt="Audi" />
-              <img src="/badges/Seat.png" alt="Seat" />
-              <img src="/badges/Skoda.jpg" alt="Skoda" />
-            </div>
-            <div className="company-name">EU Auto Parts</div>
-            <div className="company-details">
-              166/3, Kaolin Refinery Road, Werahera, Boralesgamuwa, Sri Lanka.<br/>
-              Tel: 0706333555<br/>
-              E-mail: euautoparts@gmail.com &nbsp;&nbsp;&nbsp;&nbsp; Reg No. - J 28994
-            </div>
-          </div>
+          <InvoicePrintHeader />
 
           {/* Invoice Title */}
           <div className="invoice-title">INVOICE</div>
@@ -1069,19 +1057,6 @@ const Invoice = () => {
               padding-bottom: 20px;
             }
             
-            .brand-badges {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              margin-bottom: 16px;
-            }
-            
-            .brand-badges img {
-              height: 50px;
-              object-fit: contain;
-              max-width: 120px;
-            }
-            
             .company-name {
               font-size: 28px;
               font-weight: bold;
@@ -1217,19 +1192,6 @@ const Invoice = () => {
             padding-bottom: 20px;
           }
           
-          .print-preview-content .brand-badges {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-          }
-          
-          .print-preview-content .brand-badges img {
-            height: 50px;
-            object-fit: contain;
-            max-width: 120px;
-          }
-          
           .print-preview-content .company-name {
             font-size: 28px;
             font-weight: bold;
@@ -1324,20 +1286,7 @@ const Invoice = () => {
 
         <div className="bg-gray-800 rounded-lg shadow-2xl p-6 border border-gray-700 print-container">
           {/* Company Header - Only visible in print */}
-          <div className="company-header hidden print:block">
-            <div className="brand-badges mb-4">
-              <img src="/badges/Volkswagen.png" alt="Volkswagen" />
-              <img src="/badges/Audi.jpg" alt="Audi" />
-              <img src="/badges/Seat.png" alt="Seat" />
-              <img src="/badges/Skoda.jpg" alt="Skoda" />
-            </div>
-            <div className="company-name">EU Auto Parts</div>
-            <div className="company-details">
-              166/3, Kaolin Refinery Road, Werahera, Boralesgamuwa, Sri Lanka.<br/>
-              Tel: 0706333555<br/>
-              E-mail: euautoparts@gmail.com &nbsp;&nbsp;&nbsp;&nbsp; Reg No. - J 28994
-            </div>
-          </div>
+          <InvoicePrintHeader className="company-header hidden print:block" />
 
           {/* Screen Title - Hidden in print */}
           <div className="flex justify-between items-center mb-6 print-hidden">
