@@ -289,24 +289,8 @@ const JobCards = () => {
     setPrintJobCard(jobCard);
     setShowPrintPreview(true);
     
-    // Fetch parts from invoices and estimate items for printing
+    // Job cards print only the work listed on the estimate.
     try {
-      // Fetch invoice items
-      const invoiceParts = await window.electronAPI.database.query(
-        'all',
-        `SELECT ii.*, p.name as part_name, p.part_number, p.pro_no,
-                ii.quantity, ii.selling_price, ii.discount, ii.amount as total_price,
-                ii.description as name,
-                i.inv_no, i.invoice_date, 'invoice' as source_type
-         FROM invoice_items ii
-         LEFT JOIN invoices i ON ii.invoice_id = i.id
-         LEFT JOIN parts p ON ii.code = p.pro_no OR ii.code = p.part_number
-         WHERE i.job_no = ?
-         ORDER BY i.created_at DESC`,
-        [jobCard.job_no]
-      );
-
-      // Fetch estimate items for this job
       const estimateItems = await window.electronAPI.database.query(
         'all',
         `SELECT ei.*, e.invoice_no, e.job_date, 'estimate' as source_type,
@@ -319,9 +303,7 @@ const JobCards = () => {
         [jobCard.job_no]
       );
 
-      // Combine both arrays, with estimate items first
-      const combinedParts = [...(estimateItems || []), ...(invoiceParts || [])];
-      setPrintJobCardParts(combinedParts);
+      setPrintJobCardParts(estimateItems || []);
     } catch (error) {
       console.error('Error fetching job card parts for print:', error);
       setPrintJobCardParts([]);
@@ -339,18 +321,6 @@ const JobCards = () => {
     setShowPrintPreview(false);
     setPrintJobCard(null);
     setPrintJobCardParts([]);
-  };
-
-  const calculateTotal = () => {
-    return printJobCardParts.reduce((sum, item) => {
-      // For estimate items, don't include in monetary total (they show quantity in value column)
-      if (item.source_type === 'estimate') {
-        return sum;
-      }
-      // Handle job card parts (with 'total_price')
-      const itemValue = item.value || item.total_price || 0;
-      return sum + itemValue;
-    }, 0);
   };
 
   const getStatusIcon = (status) => {
@@ -403,8 +373,7 @@ const JobCards = () => {
         <div className="print-preview-content">
           <JobCardPrint 
             jobData={printJobCard} 
-            selectedParts={printJobCardParts} 
-            calculateTotal={calculateTotal} 
+            selectedParts={printJobCardParts}
           />
         </div>
       </div>

@@ -1,6 +1,8 @@
 import React from 'react';
 
-const JobCardPrint = ({ jobData, selectedParts = [], calculateTotal }) => {
+const JobCardPrint = ({ jobData, selectedParts = [] }) => {
+  const estimateItems = selectedParts.filter(item => item.source_type === 'estimate');
+
   return (
     <div style={{ 
       width: '210mm', 
@@ -15,115 +17,42 @@ const JobCardPrint = ({ jobData, selectedParts = [], calculateTotal }) => {
     }}>
       
       {/* Header Section */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'flex-start',
+      <div style={{
+        textAlign: 'center',
         marginBottom: '8px',
         paddingBottom: '8px'
       }}>
-        {/* Left Logo - VW */}
-        <div style={{ 
-          width: '40px', 
-          height: '40px', 
-          border: '1.5px solid #000', 
-          borderRadius: '50%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '12px',
+        <h1 style={{
+          margin: '0',
+          fontSize: '18px',
           fontWeight: 'bold',
-          marginTop: '5px'
+          letterSpacing: '0.5px',
+          lineHeight: '1.1'
         }}>
-          VW
-        </div>
-        
-        {/* Center - Company Details */}
-        <div style={{ textAlign: 'center', flex: 1, margin: '0 10px' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', marginBottom: '4px' }}>
-            <div style={{ 
-              width: '35px', 
-              height: '35px', 
-              border: '1.5px solid #000', 
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '8px',
-              fontWeight: 'bold',
-              marginRight: '10px',
-              marginTop: '5px'
-            }}>
-              AUDI
-            </div>
-            
-            <div style={{ flex: 1 }}>
-              <h1 style={{ 
-                margin: '0', 
-                fontSize: '18px', 
-                fontWeight: 'bold',
-                letterSpacing: '0.5px',
-                lineHeight: '1.1'
-              }}>
-                Vishwa Motors Pvt Ltd
-              </h1>
-              <p style={{ 
-                margin: '2px 0', 
-                fontSize: '8px',
-                fontStyle: 'italic',
-                lineHeight: '1.2'
-              }}>
-                186/8, Kandy Refinery Road, Werehera, Boralesgamuwa Srilanka
-              </p>
-              <p style={{ 
-                margin: '1px 0', 
-                fontSize: '8px',
-                lineHeight: '1.2'
-              }}>
-                Tel: 0094-11-2818100
-              </p>
-              <p style={{ 
-                margin: '1px 0', 
-                fontSize: '8px',
-                lineHeight: '1.2'
-              }}>
-                E-mail: vishwa.motors@yahoo.com &nbsp;&nbsp;&nbsp;&nbsp; PV No. - 00204336
-              </p>
-            </div>
-            
-            <div style={{ 
-              width: '35px', 
-              height: '35px', 
-              border: '1.5px solid #000', 
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '7px',
-              fontWeight: 'bold',
-              marginLeft: '10px',
-              marginTop: '5px'
-            }}>
-              BMW
-            </div>
-          </div>
-        </div>
-        
-        {/* Right Logo - SKODA */}
-        <div style={{ 
-          width: '40px', 
-          height: '40px', 
-          border: '1.5px solid #000', 
-          borderRadius: '50%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '10px',
-          fontWeight: 'bold',
-          marginTop: '5px'
+          Vishwa Motors Pvt Ltd
+        </h1>
+        <p style={{
+          margin: '2px 0',
+          fontSize: '8px',
+          fontStyle: 'italic',
+          lineHeight: '1.2'
         }}>
-          SKODA
-        </div>
+          186/3, Kaolin refinery, Road, Werahera, Boralesgamuwa Sri Lanka
+        </p>
+        <p style={{
+          margin: '1px 0',
+          fontSize: '8px',
+          lineHeight: '1.2'
+        }}>
+          Tel: 070 633 3555
+        </p>
+        <p style={{
+          margin: '1px 0',
+          fontSize: '8px',
+          lineHeight: '1.2'
+        }}>
+          E-mail: vishwa.motors@yahoo.com &nbsp;&nbsp;&nbsp;&nbsp; PV No. - 00204336
+        </p>
       </div>
 
       {/* Service Advisor Section */}
@@ -344,8 +273,8 @@ const JobCardPrint = ({ jobData, selectedParts = [], calculateTotal }) => {
         </div>
 
         {/* Parts Items */}
-        {Array.from({ length: 6 }, (_, index) => {
-          const part = selectedParts && selectedParts[index];
+        {Array.from({ length: Math.max(6, estimateItems.length) }, (_, index) => {
+          const part = estimateItems[index];
           return (
             <div key={index} style={{ 
               display: 'flex',
@@ -358,11 +287,7 @@ const JobCardPrint = ({ jobData, selectedParts = [], calculateTotal }) => {
                 borderRight: '1px solid #000',
                 fontSize: '8px'
               }}>
-                {part ? (
-                  part.source_type === 'estimate' 
-                    ? `${part.type || ''} - ${part.description || ''}` 
-                    : `${part.part_name || part.description || part.name || ''} ${part.part_number ? `(${part.part_number})` : ''}`
-                ) : ''}
+                {part ? `${part.type || ''} - ${part.description || ''}` : ''}
               </div>
               <div style={{ 
                 flex: 1,
@@ -370,11 +295,7 @@ const JobCardPrint = ({ jobData, selectedParts = [], calculateTotal }) => {
                 textAlign: 'right',
                 fontSize: '8px'
               }}>
-                {part ? (
-                  part.source_type === 'estimate' 
-                    ? part.quantity || '' 
-                    : `Rs. ${(part.amount || part.total_price || 0).toFixed(2)}`
-                ) : ''}
+                {part ? part.quantity || '' : ''}
               </div>
             </div>
           );
@@ -403,7 +324,7 @@ const JobCardPrint = ({ jobData, selectedParts = [], calculateTotal }) => {
             fontWeight: 'bold',
             fontSize: '9px'
           }}>
-            Rs. {selectedParts && selectedParts.length > 0 ? selectedParts.reduce((sum, part) => sum + (part.amount || part.total_price || 0), 0).toFixed(2) : '0.00'}
+            &nbsp;
           </div>
         </div>
 
